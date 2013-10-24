@@ -76,6 +76,10 @@ public class RestUpdateAction extends BaseRestHandler {
         } else if( request.hasParam("script_file") ) {
             updateRequest.script(request.param("script_file"), ScriptService.ScriptType.FILE);
         }
+
+        updateRequest.docAsPaths(request.paramAsBoolean("doc_as_paths", updateRequest.docAsPaths()));
+        updateRequest.script(request.param("script"));
+
         updateRequest.scriptLang(request.param("lang"));
         for (Map.Entry<String, String> entry : request.params().entrySet()) {
             if (entry.getKey().startsWith("sp_")) {
@@ -107,6 +111,17 @@ public class RestUpdateAction extends BaseRestHandler {
                 }
                 upsertRequest.version(RestActions.parseVersion(request));
                 upsertRequest.versionType(VersionType.fromString(request.param("version_type"), upsertRequest.versionType()));
+            }
+            IndexRequest pathsRequest = updateRequest.pathsRequest();
+            if (pathsRequest != null) {
+                pathsRequest.routing(request.param("routing"));
+                pathsRequest.parent(request.param("parent")); // order is important, set it after routing, so it will set the routing
+                pathsRequest.timestamp(request.param("timestamp"));
+                if (request.hasParam("ttl")) {
+                    pathsRequest.ttl(request.paramAsTime("ttl", null).millis());
+                }
+                pathsRequest.version(RestActions.parseVersion(request));
+                pathsRequest.versionType(VersionType.fromString(request.param("version_type"), pathsRequest.versionType()));
             }
             IndexRequest doc = updateRequest.doc();
             if (doc != null) {
