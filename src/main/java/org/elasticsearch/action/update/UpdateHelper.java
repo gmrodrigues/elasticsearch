@@ -155,8 +155,8 @@ public class UpdateHelper extends AbstractComponent {
         String routing = getResult.getFields().containsKey(RoutingFieldMapper.NAME) ? getResult.field(RoutingFieldMapper.NAME).getValue().toString() : null;
         String parent = getResult.getFields().containsKey(ParentFieldMapper.NAME) ? getResult.field(ParentFieldMapper.NAME).getValue().toString() : null;
 
-        if (request.script() == null && request.doc() != null) {
-            IndexRequest indexRequest = request.doc();
+        if (request.script() == null && (request.doc() != null || request.pathsRequest() != null)) {
+            IndexRequest indexRequest = request.pathsRequest() != null ? request.pathsRequest() : request.doc();
             updatedSourceAsMap = sourceAndContent.v2();
             if (indexRequest.ttl() > 0) {
                 ttl = indexRequest.ttl();
@@ -168,7 +168,12 @@ public class UpdateHelper extends AbstractComponent {
             if (indexRequest.parent() != null) {
                 parent = indexRequest.parent();
             }
-            boolean noop = !XContentHelper.update(updatedSourceAsMap, indexRequest.sourceAsMap(), request.detectNoop());
+            boolean noop = false;
+            if (request.docAsPaths() || request.pathsRequest() != null) {
+                XContentHelper.updatePaths(updatedSourceAsMap, indexRequest.sourceAsMap());
+            } else {
+                noop = !XContentHelper.update(updatedSourceAsMap, indexRequest.sourceAsMap(), request.detectNoop());
+            }
             // noop could still be true even if detectNoop isn't because update detects empty maps as noops.  BUT we can only
             // actually turn the update into a noop if detectNoop is true to preserve backwards compatibility and to handle
             // cases where users repopulating multi-fields or adding synonyms, etc.
