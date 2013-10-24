@@ -81,6 +81,10 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
     private boolean docAsUpsert = false;
     private boolean detectNoop = false;
 
+    private IndexRequest pathsRequest;
+
+    private boolean docAsPaths = false;
+
     @Nullable
     private IndexRequest doc;
 
@@ -117,14 +121,14 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
             }
         }
 
-        if (script == null && doc == null) {
-            validationException = addValidationError("script or doc is missing", validationException);
+        if (script == null && doc == null && pathsRequest == null) {
+            validationException = addValidationError("script or doc or paths is missing", validationException);
         }
         if (script != null && doc != null) {
             validationException = addValidationError("can't provide both script and doc", validationException);
         }
-        if (doc == null && docAsUpsert) {
-            validationException = addValidationError("doc must be specified if doc_as_upsert is enabled", validationException);
+        if (doc == null && (docAsUpsert || docAsPaths)) {
+            validationException = addValidationError("doc must be specified if doc_as_upsert or doc_as_paths is enabled", validationException);
         }
         return validationException;
     }
@@ -612,6 +616,12 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
                     docAsUpsert(parser.booleanValue());
                 } else if ("detect_noop".equals(currentFieldName)) {
                     detectNoop(parser.booleanValue());
+                } else if ("paths".equals(currentFieldName)) {
+                    XContentBuilder docBuilder = XContentFactory.contentBuilder(xContentType);
+                    docBuilder.copyCurrentStructure(parser);
+                    safePathsRequest().source(docBuilder);
+                } else if ("doc_as_paths".equals(currentFieldName)) {
+                    docAsPaths(parser.booleanValue());
                 }
             }
         }
@@ -634,6 +644,91 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
         this.scriptedUpsert = scriptedUpsert;
     }
     
+
+    /**
+     * Sets the index request to be used if the document does not exists. Otherwise, a {@link org.elasticsearch.index.engine.DocumentMissingException}
+     * is thrown.
+     */
+    public UpdateRequest paths(IndexRequest pathsRequest) {
+        this.pathsRequest = pathsRequest;
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(XContentBuilder source) {
+        safePathsRequest().source(source);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(Map source) {
+        safePathsRequest().source(source);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(Map source, XContentType contentType) {
+        safePathsRequest().source(source, contentType);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(String source) {
+        safePathsRequest().source(source);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(byte[] source) {
+        safePathsRequest().source(source);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists.
+     */
+    public UpdateRequest paths(byte[] source, int offset, int length) {
+        safePathsRequest().source(source, offset, length);
+        return this;
+    }
+
+    /**
+     * Sets the doc source of the update request to be used when the document does not exists. The doc
+     * includes field and value pairs.
+     */
+    public UpdateRequest paths(Object... source) {
+        safePathsRequest().source(source);
+        return this;
+    }
+
+    public IndexRequest pathsRequest() {
+        return this.pathsRequest;
+    }
+
+    private IndexRequest safePathsRequest() {
+        if (pathsRequest == null) {
+            pathsRequest = new IndexRequest();
+        }
+        return pathsRequest;
+    }
+
+    public boolean docAsPaths() {
+        return this.docAsPaths;
+    }
+
+    public void docAsPaths(boolean docAsPaths) {
+        this.docAsPaths = docAsPaths;
+    }
 
     @Override
     public void readFrom(StreamInput in) throws IOException {
@@ -671,6 +766,11 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
             upsertRequest.readFrom(in);
         }
         docAsUpsert = in.readBoolean();
+        if (in.readBoolean()) {
+            pathsRequest = new IndexRequest();
+            pathsRequest.readFrom(in);
+        }
+        docAsPaths = in.readBoolean();
         version = Versions.readVersion(in);
         versionType = VersionType.fromValue(in.readByte());
         if (in.getVersion().onOrAfter(Version.V_1_4_0_Beta1)) {
@@ -724,6 +824,17 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest> 
             upsertRequest.writeTo(out);
         }
         out.writeBoolean(docAsUpsert);
+        if (pathsRequest == null) {
+            out.writeBoolean(false);
+        } else {
+            out.writeBoolean(true);
+            // make sure the basics are set
+            pathsRequest.index(index);
+            pathsRequest.type(type);
+            pathsRequest.id(id);
+            pathsRequest.writeTo(out);
+        }
+        out.writeBoolean(docAsPaths);
         Versions.writeVersion(version, out);
         out.writeByte(versionType.getValue());
         if (out.getVersion().onOrAfter(Version.V_1_4_0_Beta1)) {

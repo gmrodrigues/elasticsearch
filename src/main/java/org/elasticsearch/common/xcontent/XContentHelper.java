@@ -20,6 +20,8 @@
 package org.elasticsearch.common.xcontent;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchParseException;
@@ -35,6 +37,7 @@ import org.elasticsearch.common.xcontent.ToXContent.Params;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -261,6 +264,34 @@ public class XContentHelper {
             modified = !old.equals(changesEntry.getValue());
         }
         return modified;
+    }
+
+    /**
+     * Overwrite given values on the source. If the value is a map,
+     * it will not be merged but overwritten. The keys of the changes map representing a path of
+     * the source map tree.
+     * If the path doesn't exists, a new tree will be inserted.
+     */
+    public static void updatePaths(Map<String, Object> source, Map<String, Object> changes) {
+        for (Map.Entry<String, Object> changesEntry : changes.entrySet()) {
+            if (changesEntry.getKey().contains(".")) {
+                // sub-path detected, dive recursive to the wanted tree element
+                List<String> path = Splitter.on(".").splitToList(changesEntry.getKey());
+                String currentKey = path.get(0);
+                if (!source.containsKey(currentKey)) {
+                    // insert parent tree element
+                    source.put(currentKey, new HashMap<String, Object>());
+                }
+                Map<String, Object> subChanges = new HashMap<>();
+                subChanges.put(Joiner.on(".").join(path.subList(1, path.size())),
+                        changesEntry.getValue());
+                updatePaths((Map<String, Object>) source.get(currentKey), subChanges);
+            } else {
+                // overwrite or insert the field
+                source.put(changesEntry.getKey(), changesEntry.getValue());
+
+            }
+        }
     }
 
     /**
