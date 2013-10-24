@@ -49,9 +49,13 @@ import org.elasticsearch.index.store.CorruptedFileTest;
 import org.elasticsearch.index.store.Store;
 import org.elasticsearch.script.ScriptService;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
+
 import org.junit.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
@@ -471,8 +475,8 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
             fail("Should have thrown ActionRequestValidationException");
         } catch (ActionRequestValidationException e) {
             assertThat(e.validationErrors().size(), equalTo(1));
-            assertThat(e.validationErrors().get(0), containsString("doc must be specified if doc_as_upsert is enabled"));
-            assertThat(e.getMessage(), containsString("doc must be specified if doc_as_upsert is enabled"));
+            assertThat(e.validationErrors().get(0), containsString("doc must be specified if doc_as_upsert or doc_as_paths is enabled"));
+            assertThat(e.getMessage(), containsString("doc must be specified if doc_as_upsert or doc_as_paths is enabled"));
         }
     }
 
@@ -569,20 +573,20 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
                 .execute().actionGet();
         ensureGreen();
 
-        final int numberOfThreads = scaledRandomIntBetween(3,5);
-        final int numberOfIdsPerThread = scaledRandomIntBetween(3,10);
-        final int numberOfUpdatesPerId = scaledRandomIntBetween(10,100);
-        final int retryOnConflict = randomIntBetween(0,1);
+        final int numberOfThreads = scaledRandomIntBetween(3, 5);
+        final int numberOfIdsPerThread = scaledRandomIntBetween(3, 10);
+        final int numberOfUpdatesPerId = scaledRandomIntBetween(10, 100);
+        final int retryOnConflict = randomIntBetween(0, 1);
         final CountDownLatch latch = new CountDownLatch(numberOfThreads);
         final CountDownLatch startLatch = new CountDownLatch(1);
         final List<Throwable> failures = new CopyOnWriteArrayList<>();
 
         final class UpdateThread extends Thread {
-            final Map<Integer,Integer> failedMap = new HashMap<>();
+            final Map<Integer, Integer> failedMap = new HashMap<>();
             final int numberOfIds;
             final int updatesPerId;
-            final int maxUpdateRequests = numberOfIdsPerThread*numberOfUpdatesPerId;
-            final int maxDeleteRequests = numberOfIdsPerThread*numberOfUpdatesPerId;
+            final int maxUpdateRequests = numberOfIdsPerThread * numberOfUpdatesPerId;
+            final int maxDeleteRequests = numberOfIdsPerThread * numberOfUpdatesPerId;
             private final Semaphore updateRequestsOutstanding = new Semaphore(maxUpdateRequests);
             private final Semaphore deleteRequestsOutstanding = new Semaphore(maxDeleteRequests);
 
@@ -635,7 +639,7 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
             }
 
             @Override
-            public void run(){
+            public void run() {
                 try {
                     startLatch.await();
                     boolean hasWaitedForNoNode = false;
@@ -697,7 +701,7 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
                 }
             }
 
-            private void incrementMapValue(int j, Map<Integer,Integer> map) {
+            private void incrementMapValue(int j, Map<Integer, Integer> map) {
                 if (!map.containsKey(j)) {
                     map.put(j, 0);
                 }
@@ -708,15 +712,16 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
                 long start = System.currentTimeMillis();
                 do {
                     long msRemaining = timeOut.getMillis() - (System.currentTimeMillis() - start);
-                    logger.info("[{}] going to try and aquire [{}] in [{}]ms [{}] available to aquire right now",name, maxRequests,msRemaining, requestsOutstanding.availablePermits());
+                    logger.info("[{}] going to try and aquire [{}] in [{}]ms [{}] available to aquire right now", name, maxRequests, msRemaining, requestsOutstanding.availablePermits());
                     try {
-                        requestsOutstanding.tryAcquire(maxRequests, msRemaining, TimeUnit.MILLISECONDS );
+                        requestsOutstanding.tryAcquire(maxRequests, msRemaining, TimeUnit.MILLISECONDS);
                         return;
                     } catch (InterruptedException ie) {
                         //Just keep swimming
                     }
-                } while ((System.currentTimeMillis() - start) < timeOut.getMillis());
-                throw new ElasticsearchTimeoutException("Requests were still outstanding after the timeout [" + timeOut + "] for type [" + name + "]" );
+                }
+                while ((System.currentTimeMillis() - start) < timeOut.getMillis());
+                throw new ElasticsearchTimeoutException("Requests were still outstanding after the timeout [" + timeOut + "] for type [" + name + "]");
             }
         }
         final List<UpdateThread> threads = new ArrayList<>();
@@ -730,7 +735,7 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
         startLatch.countDown();
         latch.await();
 
-        for (UpdateThread ut : threads){
+        for (UpdateThread ut : threads) {
             ut.join(); //Threads should have finished because of the latch.await
         }
 
@@ -747,10 +752,10 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
         //All the previous operations should be complete or failed at this point
         for (int i = 0; i < numberOfIdsPerThread; ++i) {
             UpdateResponse ur = client().prepareUpdate("test", "type1", Integer.toString(i))
-                .setScript("ctx._source.field += 1", ScriptService.ScriptType.INLINE)
-                .setRetryOnConflict(Integer.MAX_VALUE)
-                .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
-                .execute().actionGet();
+                    .setScript("ctx._source.field += 1", ScriptService.ScriptType.INLINE)
+                    .setRetryOnConflict(Integer.MAX_VALUE)
+                    .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
+                    .execute().actionGet();
         }
 
         refresh();
@@ -771,10 +776,126 @@ public class UpdateTests extends ElasticsearchIntegrationTest {
                 assertThat(response.getVersion(), equalTo((long) expectedVersion));
                 assertThat(response.getVersion() + totalFailures,
                         equalTo(
-                                (long)((numberOfUpdatesPerId * numberOfThreads * 2) + 1)
-                ));
+                                (long) ((numberOfUpdatesPerId * numberOfThreads * 2) + 1)
+                        ));
             }
         }
+
+    }
+
+    private List<String> createPathsTestDocs() throws Exception {
+        List<String> testDocs = new ArrayList<String>(3);
+
+        String sourceDoc = XContentFactory.jsonBuilder()
+                .startObject()
+                .startObject("map1")
+                    .startObject("submap")
+                        .field("number", 1)
+                        .field("string", "a string")
+                        .startObject("subsubmap")
+                            .field("number", 2)
+                        .endObject()
+                    .endObject()
+                .endObject()
+                .startObject("map2")
+                    .field("number", 3)
+                .endObject()
+                .endObject()
+                .string();
+        testDocs.add(sourceDoc);
+
+        String overwritePaths = XContentFactory.jsonBuilder()
+                .startObject()
+                .field("map1.submap.number", 4)
+                .startObject("map1.submap.subsubmap")
+                    .startObject("newmap")
+                        .field("newstring", "a new string")
+                    .endObject()
+                .endObject()
+                .startObject("map2")
+                    .startObject("newmap")
+                        .field("newfield", 3)
+                    .endObject()
+                .endObject()
+                .startObject("newmap3.newsubmap")
+                    .field("newstring", "a new string")
+                .endObject()
+                .endObject()
+                .string();
+        testDocs.add(overwritePaths);
+
+        String expectedUpdatedDoc = XContentFactory.jsonBuilder()
+                .startObject()
+                .startObject("map1")
+                    .startObject("submap")
+                        .field("number", 4)
+                        .field("string", "a string")
+                        .startObject("subsubmap")
+                            .startObject("newmap")
+                                .field("newstring", "a new string")
+                            .endObject()
+                        .endObject()
+                    .endObject()
+                .endObject()
+                .startObject("map2")
+                    .startObject("newmap")
+                        .field("newfield", 3)
+                    .endObject()
+                .endObject()
+                .startObject("newmap3")
+                    .startObject("newsubmap")
+                        .field("newstring", "a new string")
+                    .endObject()
+                .endObject()
+                .endObject()
+                .string();
+        testDocs.add(expectedUpdatedDoc);
+
+        return testDocs;
+    }
+
+    @Test
+    public void testPaths() throws Exception {
+        createIndex();
+        ensureGreen();
+
+        List<String> testDocs = createPathsTestDocs();
+        String sourceDoc = testDocs.get(0);
+        String overwritePaths = testDocs.get(1);
+        String expectedUpdatedDoc = testDocs.get(2);
+
+        client().prepareIndex("test", "type1", "1").setSource(sourceDoc).execute().actionGet();
+
+        UpdateResponse updateResponse = client().prepareUpdate("test", "type1", "1")
+                .setPaths(overwritePaths)
+                .setFields("_source")
+                .execute().actionGet();
+
+        assertThat(updateResponse.getGetResult(), notNullValue());
+        assertThat(updateResponse.getGetResult().sourceAsString(), equalTo(expectedUpdatedDoc));
+    }
+
+    @Test
+    public void testPathsDoc() throws Exception {
+        createIndex();
+        ensureGreen();
+
+        List<String> testDocs = createPathsTestDocs();
+        String sourceDoc = testDocs.get(0);
+        String overwritePaths = testDocs.get(1);
+        String expectedUpdatedDoc = testDocs.get(2);
+
+        client().prepareIndex("test", "type1", "1").setSource(sourceDoc).execute().actionGet();
+
+        UpdateResponse updateResponse = client().prepareUpdate("test", "type1", "1")
+                .setDoc(overwritePaths)
+                .setDocAsPaths(true)
+                .setFields("_source")
+                .execute().actionGet();
+
+        assertThat(updateResponse.getGetResult(), notNullValue());
+        assertThat(updateResponse.getGetResult().sourceAsString(), equalTo(expectedUpdatedDoc));
+
     }
 
 }
