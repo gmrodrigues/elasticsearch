@@ -21,6 +21,7 @@ package org.elasticsearch.common.xcontent.builder;
 
 import com.google.common.collect.Lists;
 import org.elasticsearch.common.bytes.BytesArray;
+import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.io.FastCharArrayWriter;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.xcontent.*;
@@ -170,6 +171,13 @@ public class XContentBuilderTests extends ElasticsearchTestCase {
         builder = XContentFactory.contentBuilder(XContentType.JSON).fieldCaseConversion(UNDERSCORE);
         builder.startObject().field("testName", "value").endObject();
         assertThat(builder.string(), equalTo("{\"test_name\":\"value\"}"));
+    }
+
+    @Test
+    public void testBytesRefConversion() throws Exception {
+        XContentBuilder builder = XContentFactory.contentBuilder(XContentType.JSON);
+        builder.startObject().field("test_name", new BytesRef("test")).endObject();
+        assertThat(builder.bytes().toUtf8(), equalTo("{\"test_name\":\"test\"}"));
     }
 
     @Test
