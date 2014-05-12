@@ -21,6 +21,7 @@ package org.elasticsearch.common.xcontent;
 
 import com.google.common.base.Charsets;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.CharsRef;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -1244,7 +1245,7 @@ public final class XContentBuilder implements BytesStream, Releasable {
             generator.writeBinary(bytes.array(), bytes.arrayOffset(), bytes.length());
         } else if (value instanceof BytesRef) {
             BytesRef bytes = (BytesRef) value;
-            generator.writeBinary(bytes.bytes, bytes.offset, bytes.length);
+            generator.writeUTF8String(bytes.bytes, bytes.offset, bytes.length);
         } else if (value instanceof Text) {
             Text text = (Text) value;
             if (text.hasBytes() && text.bytes().hasArray()) {
@@ -1287,6 +1288,8 @@ public final class XContentBuilder implements BytesStream, Releasable {
                 generator.writeNumber(v);
             }
             generator.writeEndArray();
+        } else if (value instanceof Byte) {
+            generator.writeNumber(((Byte)value).intValue());
         } else {
             // if this is a "value" object, like enum, DistanceUnit, ..., just toString it
             // yea, it can be misleading when toString a Java class, but really, jackson should be used in that case
