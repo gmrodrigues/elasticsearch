@@ -164,7 +164,9 @@ public class BulkUdpService extends AbstractLifecycleComponent<BulkUdpService> {
         if (bootstrap != null) {
             bootstrap.releaseExternalResources();
         }
-        bulkProcessor.close();
+        if (bulkProcessor != null) {
+            bulkProcessor.close();
+        }
     }
 
     @Override

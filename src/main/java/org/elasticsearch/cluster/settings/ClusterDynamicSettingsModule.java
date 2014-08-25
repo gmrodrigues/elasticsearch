@@ -24,8 +24,10 @@ import org.elasticsearch.cluster.InternalClusterInfoService;
 import org.elasticsearch.cluster.action.index.MappingUpdatedAction;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.routing.allocation.allocator.BalancedShardsAllocator;
+import org.elasticsearch.cluster.routing.allocation.deallocator.Deallocators;
 import org.elasticsearch.cluster.routing.allocation.decider.*;
 import org.elasticsearch.cluster.service.InternalClusterService;
+import org.elasticsearch.cluster.service.GracefulStop;
 import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.discovery.DiscoverySettings;
 import org.elasticsearch.discovery.zen.ZenDiscovery;
@@ -104,6 +106,12 @@ public class ClusterDynamicSettingsModule extends AbstractModule {
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.REQUEST_CIRCUIT_BREAKER_OVERHEAD_SETTING, Validator.NON_NEGATIVE_DOUBLE);
         clusterDynamicSettings.addDynamicSetting(GroovyScriptEngineService.GROOVY_SCRIPT_BLACKLIST_PATCH);
         clusterDynamicSettings.addDynamicSetting(InternalClusterService.SETTING_CLUSTER_SERVICE_SLOW_TASK_LOGGING_THRESHOLD, Validator.TIME_NON_NEGATIVE);
+
+        // graceful stop
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.TIMEOUT, Validator.TIME_NON_NEGATIVE);
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.FORCE, Validator.BOOLEAN);
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.REALLOCATE, Validator.BOOLEAN);
+        clusterDynamicSettings.addDynamicSetting(Deallocators.GRACEFUL_STOP_MIN_AVAILABILITY);
     }
 
     public void addDynamicSettings(String... settings) {
