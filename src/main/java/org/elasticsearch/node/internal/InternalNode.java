@@ -99,6 +99,8 @@ import org.elasticsearch.tribe.TribeModule;
 import org.elasticsearch.tribe.TribeService;
 import org.elasticsearch.watcher.ResourceWatcherModule;
 import org.elasticsearch.watcher.ResourceWatcherService;
+import sun.misc.Signal;
+import sun.misc.SignalHandler;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
@@ -119,6 +121,7 @@ public final class InternalNode implements Node {
     private final PluginsService pluginsService;
 
     private final Client client;
+
 
     public InternalNode() throws ElasticsearchException {
         this(ImmutableSettings.Builder.EMPTY_SETTINGS, true);
@@ -258,6 +261,7 @@ public final class InternalNode implements Node {
         return this;
     }
 
+
     @Override
     public Node stop() {
         if (!lifecycle.moveToStopped()) {
@@ -305,6 +309,141 @@ public final class InternalNode implements Node {
         logger.info("stopped");
 
         return this;
+    }
+
+    public Node doDecommission() {
+        if (!lifecycle.moveToStopped()) {
+            return this;
+        }
+        ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
+        logger.info("decommissioning...");
+
+        injector.getInstance(TribeService.class).decommission();
+        injector.getInstance(BulkUdpService.class).decommission();
+        injector.getInstance(ResourceWatcherService.class).decommission();
+        if (settings.getAsBoolean("http.enabled", true)) {
+            injector.getInstance(HttpServer.class).decommission();
+        }
+        injector.getInstance(MappingUpdatedAction.class).stop();
+        injector.getInstance(RiversManager.class).decommission();
+
+        injector.getInstance(SnapshotsService.class).decommission();
+        // stop any changes happening as a result of cluster state changes
+        injector.getInstance(IndicesClusterStateService.class).decommission();
+        // we close indices first, so operations won't be allowed on it
+        injector.getInstance(IndexingMemoryController.class).decommission();
+        injector.getInstance(IndicesTTLService.class).decommission();
+        injector.getInstance(IndicesService.class).decommission();
+
+        injector.getInstance(RoutingService.class).decommission();
+        injector.getInstance(ClusterService.class).decommission();
+        injector.getInstance(DiscoveryService.class).decommission();
+        injector.getInstance(MonitorService.class).decommission();
+        injector.getInstance(GatewayService.class).decommission();
+        injector.getInstance(SearchService.class).decommission();
+        injector.getInstance(RestController.class).decommission();
+        injector.getInstance(TransportService.class).decommission();
+
+        for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
+            injector.getInstance(plugin).decommission();
+        }
+
+        logger.info("decommissioned");
+
+        return this;
+    }
+
+    @Override
+    public void decommission() {
+        if (lifecycle.started()) {
+            doDecommission();
+        }
+        if (!lifecycle.moveToClosed()) {
+            return;
+        }
+
+        ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
+        logger.info("closing ...");
+
+        StopWatch stopWatch = new StopWatch("node_close");
+        stopWatch.start("tribe");
+        injector.getInstance(TribeService.class).close();
+        stopWatch.stop().start("bulk.udp");
+        injector.getInstance(BulkUdpService.class).close();
+        stopWatch.stop().start("http");
+        if (settings.getAsBoolean("http.enabled", true)) {
+            injector.getInstance(HttpServer.class).close();
+        }
+
+        stopWatch.stop().start("rivers");
+        injector.getInstance(RiversManager.class).close();
+
+        stopWatch.stop().start("snapshot_service");
+        injector.getInstance(SnapshotsService.class).close();
+        stopWatch.stop().start("client");
+        Releasables.close(injector.getInstance(Client.class));
+        stopWatch.stop().start("indices_cluster");
+        injector.getInstance(IndicesClusterStateService.class).close();
+        stopWatch.stop().start("indices");
+        injector.getInstance(IndicesFilterCache.class).close();
+        injector.getInstance(IndicesFieldDataCache.class).close();
+        injector.getInstance(IndexingMemoryController.class).close();
+        injector.getInstance(IndicesTTLService.class).close();
+        injector.getInstance(IndicesService.class).close();
+        stopWatch.stop().start("routing");
+        injector.getInstance(RoutingService.class).close();
+        stopWatch.stop().start("cluster");
+        injector.getInstance(ClusterService.class).close();
+        stopWatch.stop().start("discovery");
+        injector.getInstance(DiscoveryService.class).close();
+        stopWatch.stop().start("monitor");
+        injector.getInstance(MonitorService.class).close();
+        stopWatch.stop().start("gateway");
+        injector.getInstance(GatewayService.class).close();
+        stopWatch.stop().start("search");
+        injector.getInstance(SearchService.class).close();
+        stopWatch.stop().start("rest");
+        injector.getInstance(RestController.class).close();
+        stopWatch.stop().start("transport");
+        injector.getInstance(TransportService.class).close();
+        stopWatch.stop().start("percolator_service");
+        injector.getInstance(PercolatorService.class).close();
+
+        for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
+            stopWatch.stop().start("plugin(" + plugin.getName() + ")");
+            injector.getInstance(plugin).close();
+        }
+
+        stopWatch.stop().start("script");
+        injector.getInstance(ScriptService.class).close();
+
+        stopWatch.stop().start("thread_pool");
+        injector.getInstance(ThreadPool.class).shutdown();
+        try {
+            injector.getInstance(ThreadPool.class).awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            // ignore
+        }
+        stopWatch.stop().start("thread_pool_force_shutdown");
+        try {
+            injector.getInstance(ThreadPool.class).shutdownNow();
+        } catch (Exception e) {
+            // ignore
+        }
+        stopWatch.stop();
+
+        if (logger.isTraceEnabled()) {
+            logger.trace("Close times for each service:\n{}", stopWatch.prettyPrint());
+        }
+
+        injector.getInstance(NodeEnvironment.class).close();
+        injector.getInstance(CacheRecycler.class).close();
+        injector.getInstance(PageCacheRecycler.class).close();
+        Injectors.close(injector);
+
+        CachedStreams.clear();
+
+        logger.info("closed");
     }
 
     public void close() {
@@ -409,6 +548,7 @@ public final class InternalNode implements Node {
     }
 
     public static void main(String[] args) throws Exception {
+        ESLogger logger = Loggers.getLogger(InternalNode.class);
         final InternalNode node = new InternalNode();
         node.start();
         Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -417,5 +557,17 @@ public final class InternalNode implements Node {
                 node.close();
             }
         });
+        try {
+            Signal signal = new Signal("USR2");
+            Signal.handle(signal, new SignalHandler() {
+                @Override
+                public void handle(Signal sig) {
+                    node.decommission();
+                    System.exit(0);
+                }
+            });
+        } catch (IllegalArgumentException e) {
+            logger.info("SIGUSR2 signal not supported on {}.", System.getProperty("os.name"));
+        }
     }
 }

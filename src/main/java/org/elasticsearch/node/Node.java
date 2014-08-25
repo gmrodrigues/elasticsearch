@@ -55,6 +55,11 @@ public interface Node extends Releasable{
     Node stop();
 
     /**
+     * Closes the node, waiting for open connections to be finished and ensuring the "data_availability"
+     */
+    void decommission();
+
+    /**
      * Closes the node (and {@link #stop}s if its running).
      */
     void close();

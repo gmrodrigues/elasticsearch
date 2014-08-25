@@ -118,6 +118,11 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
     }
 
     @Override
+    protected void doDecommission() throws ElasticsearchException {
+        transport.decommission();
+    }
+
+    @Override
     protected void doClose() throws ElasticsearchException {
         transport.close();
     }
