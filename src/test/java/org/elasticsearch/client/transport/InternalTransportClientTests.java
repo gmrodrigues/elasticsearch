@@ -19,6 +19,7 @@
 
 package org.elasticsearch.client.transport;
 
+import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.*;
 import org.elasticsearch.action.admin.cluster.ClusterAction;
@@ -37,6 +38,7 @@ import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.transport.LocalTransportAddress;
 import org.elasticsearch.test.ElasticsearchTestCase;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.Transport;
 import org.elasticsearch.transport.TransportService;
 import org.junit.Test;
 

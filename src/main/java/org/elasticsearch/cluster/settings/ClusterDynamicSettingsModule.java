@@ -24,7 +24,9 @@ import org.elasticsearch.cluster.InternalClusterInfoService;
 import org.elasticsearch.cluster.action.index.MappingUpdatedAction;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.routing.allocation.allocator.BalancedShardsAllocator;
+import org.elasticsearch.cluster.routing.allocation.deallocator.Deallocators;
 import org.elasticsearch.cluster.routing.allocation.decider.*;
+import org.elasticsearch.cluster.service.GracefulStop;
 import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.discovery.DiscoverySettings;
 import org.elasticsearch.discovery.zen.ZenDiscovery;
@@ -96,12 +98,19 @@ public class ClusterDynamicSettingsModule extends AbstractModule {
         clusterDynamicSettings.addDynamicSetting(SnapshotInProgressAllocationDecider.CLUSTER_ROUTING_ALLOCATION_SNAPSHOT_RELOCATION_ENABLED);
         clusterDynamicSettings.addDynamicSetting(DestructiveOperations.REQUIRES_NAME);
         clusterDynamicSettings.addDynamicSetting(DiscoverySettings.PUBLISH_TIMEOUT, Validator.TIME_NON_NEGATIVE);
+
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.TOTAL_CIRCUIT_BREAKER_LIMIT_SETTING, Validator.MEMORY_SIZE);
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.FIELDDATA_CIRCUIT_BREAKER_LIMIT_SETTING, Validator.MEMORY_SIZE);
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.FIELDDATA_CIRCUIT_BREAKER_OVERHEAD_SETTING, Validator.NON_NEGATIVE_DOUBLE);
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.REQUEST_CIRCUIT_BREAKER_LIMIT_SETTING, Validator.MEMORY_SIZE);
         clusterDynamicSettings.addDynamicSetting(HierarchyCircuitBreakerService.REQUEST_CIRCUIT_BREAKER_OVERHEAD_SETTING, Validator.NON_NEGATIVE_DOUBLE);
         clusterDynamicSettings.addDynamicSetting(GroovyScriptEngineService.GROOVY_SCRIPT_BLACKLIST_PATCH);
+
+        // graceful stop
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.TIMEOUT, Validator.TIME_NON_NEGATIVE);
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.FORCE, Validator.BOOLEAN);
+        clusterDynamicSettings.addDynamicSetting(GracefulStop.SettingNames.REALLOCATE, Validator.BOOLEAN);
+        clusterDynamicSettings.addDynamicSetting(Deallocators.GRACEFUL_STOP_MIN_AVAILABILITY);
     }
 
     public void addDynamicSettings(String... settings) {

@@ -178,6 +178,11 @@ abstract class FailAndRetryMockTransport<Response extends TransportResponse> imp
     }
 
     @Override
+    public Transport disable() throws ElasticsearchException {
+        return null;
+    }
+
+    @Override
     public Transport start() throws ElasticsearchException {
         return null;
     }
