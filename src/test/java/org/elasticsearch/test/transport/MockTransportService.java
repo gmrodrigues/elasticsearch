@@ -293,6 +293,12 @@ public class MockTransportService extends TransportService {
         }
 
         @Override
+        public Transport decommission() throws ElasticsearchException {
+            transport.stop();
+            return this;
+        }
+
+        @Override
         public void close() throws ElasticsearchException {
             transport.close();
         }

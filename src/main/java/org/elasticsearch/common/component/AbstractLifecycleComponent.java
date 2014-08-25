@@ -109,7 +109,27 @@ public abstract class AbstractLifecycleComponent<T> extends AbstractComponent im
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
+    public T decommission() throws ElasticsearchException {
+        if (!lifecycle.canMoveToStopped()) {
+            return (T) this;
+        }
+        for (LifecycleListener listener : listeners) {
+            listener.beforeStop();
+        }
+        lifecycle.moveToStopped();
+        doDecommission();
+        for (LifecycleListener listener : listeners) {
+            listener.afterStop();
+        }
+        return (T) this;
+    }
+
     protected abstract void doStop() throws ElasticsearchException;
+
+    protected void doDecommission() throws ElasticsearchException {
+        doStop();
+    }
 
     @Override
     public void close() throws ElasticsearchException {
