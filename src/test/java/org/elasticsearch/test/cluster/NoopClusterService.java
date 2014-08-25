@@ -138,4 +138,9 @@ public class NoopClusterService implements ClusterService {
     public void close() throws ElasticsearchException {
 
     }
+
+    @Override
+    public ClusterService decommission() throws ElasticsearchException {
+        return null;
+    }
 }

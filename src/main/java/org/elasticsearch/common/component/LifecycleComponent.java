@@ -35,4 +35,6 @@ public interface LifecycleComponent<T> extends CloseableComponent {
     T start() throws ElasticsearchException;
 
     T stop() throws ElasticsearchException;
+
+    T decommission() throws ElasticsearchException;
 }
