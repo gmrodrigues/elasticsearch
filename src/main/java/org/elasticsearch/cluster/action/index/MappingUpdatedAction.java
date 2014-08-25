@@ -107,14 +107,20 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
         nodeSettingsService.addListener(new ApplySettings());
     }
 
-    public void start() {
+    public synchronized void start() {
         this.masterMappingUpdater = new MasterMappingUpdater(EsExecutors.threadName(settings, "master_mapping_updater"));
         this.masterMappingUpdater.start();
     }
 
     public void stop() {
-        this.masterMappingUpdater.close();
-        this.masterMappingUpdater = null;
+        disable();
+    }
+
+    public synchronized void disable() {
+        if (this.masterMappingUpdater != null) {
+            this.masterMappingUpdater.close();
+            this.masterMappingUpdater = null;
+        }
     }
 
     public void updateMappingOnMaster(String index, DocumentMapper documentMapper, String indexUUID) {
