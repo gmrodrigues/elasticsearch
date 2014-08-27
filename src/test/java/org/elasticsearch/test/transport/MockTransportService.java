@@ -213,8 +213,6 @@ public class MockTransportService extends TransportService {
             this.transport = transport;
         }
 
-
-
         @Override
         public void transportServiceAdapter(TransportServiceAdapter service) {
             transport.transportServiceAdapter(service);
@@ -281,6 +279,12 @@ public class MockTransportService extends TransportService {
         }
 
         @Override
+        public Transport disable() throws ElasticsearchException {
+            transport.disable();
+            return this;
+        }
+
+        @Override
         public Transport start() throws ElasticsearchException {
             transport.start();
             return this;
@@ -288,12 +292,6 @@ public class MockTransportService extends TransportService {
 
         @Override
         public Transport stop() throws ElasticsearchException {
-            transport.stop();
-            return this;
-        }
-
-        @Override
-        public Transport decommission() throws ElasticsearchException {
             transport.stop();
             return this;
         }
