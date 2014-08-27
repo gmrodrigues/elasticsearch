@@ -55,9 +55,9 @@ public interface Node extends Releasable{
     Node stop();
 
     /**
-     * Closes the node, waiting for open connections to be finished and ensuring the "data_availability"
+     * disables the node,
      */
-    void decommission();
+    Node disable();
 
     /**
      * Closes the node (and {@link #stop}s if its running).
@@ -68,4 +68,9 @@ public interface Node extends Releasable{
      * Returns <tt>true</tt> if the node is closed.
      */
     boolean isClosed();
+
+    /**
+     * Returns <tt>true</tt> if the node is disabled.
+     */
+    boolean isDisabled();
 }

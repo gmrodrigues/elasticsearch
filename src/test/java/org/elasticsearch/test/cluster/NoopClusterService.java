@@ -125,6 +125,11 @@ public class NoopClusterService implements ClusterService {
     }
 
     @Override
+    public ClusterService disable() throws ElasticsearchException {
+        return null;
+    }
+
+    @Override
     public ClusterService start() throws ElasticsearchException {
         return null;
     }
@@ -137,10 +142,5 @@ public class NoopClusterService implements ClusterService {
     @Override
     public void close() throws ElasticsearchException {
 
-    }
-
-    @Override
-    public ClusterService decommission() throws ElasticsearchException {
-        return null;
     }
 }

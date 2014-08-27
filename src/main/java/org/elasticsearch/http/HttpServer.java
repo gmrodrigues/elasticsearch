@@ -105,8 +105,13 @@ public class HttpServer extends AbstractLifecycleComponent<HttpServer> {
     }
 
     @Override
-    protected void doDecommission() throws ElasticsearchException {
-        transport.decommission();
+    protected void doDisable() throws ElasticsearchException {
+       transport.disable();
+    }
+
+    @Override
+    protected void doEnable() throws ElasticsearchException {
+        transport.start();
     }
 
     public HttpInfo info() {

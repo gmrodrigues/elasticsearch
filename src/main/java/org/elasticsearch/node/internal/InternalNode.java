@@ -263,7 +263,6 @@ public final class InternalNode implements Node {
         return this;
     }
 
-
     @Override
     public Node stop() {
         if (!lifecycle.moveToStopped()) {
@@ -313,139 +312,45 @@ public final class InternalNode implements Node {
         return this;
     }
 
-    public Node doDecommission() {
-        if (!lifecycle.moveToStopped()) {
+    public Node disable() {
+        if (!lifecycle.moveToDisabled()) {
             return this;
         }
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
-        logger.info("decommissioning...");
+        logger.info("disabling...");
 
-        injector.getInstance(TribeService.class).decommission();
-        injector.getInstance(BulkUdpService.class).decommission();
-        injector.getInstance(ResourceWatcherService.class).decommission();
+        injector.getInstance(TribeService.class).disable();
+        injector.getInstance(BulkUdpService.class).disable();
+        injector.getInstance(ResourceWatcherService.class).disable();
         if (settings.getAsBoolean("http.enabled", true)) {
-            injector.getInstance(HttpServer.class).decommission();
+            injector.getInstance(HttpServer.class).disable();
         }
-        injector.getInstance(MappingUpdatedAction.class).stop();
-        injector.getInstance(RiversManager.class).decommission();
+        injector.getInstance(RiversManager.class).disable();
 
-        injector.getInstance(SnapshotsService.class).decommission();
+        injector.getInstance(SnapshotsService.class).disable();
         // stop any changes happening as a result of cluster state changes
-        injector.getInstance(IndicesClusterStateService.class).decommission();
+        injector.getInstance(IndicesClusterStateService.class).disable();
         // we close indices first, so operations won't be allowed on it
-        injector.getInstance(IndexingMemoryController.class).decommission();
-        injector.getInstance(IndicesTTLService.class).decommission();
-        injector.getInstance(IndicesService.class).decommission();
+        injector.getInstance(IndexingMemoryController.class).disable();
+        injector.getInstance(IndicesTTLService.class).disable();
+        injector.getInstance(IndicesService.class).disable();
 
-        injector.getInstance(RoutingService.class).decommission();
-        injector.getInstance(ClusterService.class).decommission();
-        injector.getInstance(DiscoveryService.class).decommission();
-        injector.getInstance(MonitorService.class).decommission();
-        injector.getInstance(GatewayService.class).decommission();
-        injector.getInstance(SearchService.class).decommission();
-        injector.getInstance(RestController.class).decommission();
-        injector.getInstance(TransportService.class).decommission();
+        injector.getInstance(RoutingService.class).disable();
+        injector.getInstance(ClusterService.class).disable();
+        injector.getInstance(DiscoveryService.class).disable();
+        injector.getInstance(MonitorService.class).disable();
+        injector.getInstance(GatewayService.class).disable();
+        injector.getInstance(SearchService.class).disable();
+        injector.getInstance(RestController.class).disable();
+        injector.getInstance(TransportService.class).disable();
 
         for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
-            injector.getInstance(plugin).decommission();
+            injector.getInstance(plugin).disable();
         }
 
-        logger.info("decommissioned");
+        logger.info("disabled");
 
         return this;
-    }
-
-    @Override
-    public void decommission() {
-        if (lifecycle.started()) {
-            doDecommission();
-        }
-        if (!lifecycle.moveToClosed()) {
-            return;
-        }
-
-        ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
-        logger.info("closing ...");
-
-        StopWatch stopWatch = new StopWatch("node_close");
-        stopWatch.start("tribe");
-        injector.getInstance(TribeService.class).close();
-        stopWatch.stop().start("bulk.udp");
-        injector.getInstance(BulkUdpService.class).close();
-        stopWatch.stop().start("http");
-        if (settings.getAsBoolean("http.enabled", true)) {
-            injector.getInstance(HttpServer.class).close();
-        }
-
-        stopWatch.stop().start("rivers");
-        injector.getInstance(RiversManager.class).close();
-
-        stopWatch.stop().start("snapshot_service");
-        injector.getInstance(SnapshotsService.class).close();
-        stopWatch.stop().start("client");
-        Releasables.close(injector.getInstance(Client.class));
-        stopWatch.stop().start("indices_cluster");
-        injector.getInstance(IndicesClusterStateService.class).close();
-        stopWatch.stop().start("indices");
-        injector.getInstance(IndicesFilterCache.class).close();
-        injector.getInstance(IndicesFieldDataCache.class).close();
-        injector.getInstance(IndexingMemoryController.class).close();
-        injector.getInstance(IndicesTTLService.class).close();
-        injector.getInstance(IndicesService.class).close();
-        stopWatch.stop().start("routing");
-        injector.getInstance(RoutingService.class).close();
-        stopWatch.stop().start("cluster");
-        injector.getInstance(ClusterService.class).close();
-        stopWatch.stop().start("discovery");
-        injector.getInstance(DiscoveryService.class).close();
-        stopWatch.stop().start("monitor");
-        injector.getInstance(MonitorService.class).close();
-        stopWatch.stop().start("gateway");
-        injector.getInstance(GatewayService.class).close();
-        stopWatch.stop().start("search");
-        injector.getInstance(SearchService.class).close();
-        stopWatch.stop().start("rest");
-        injector.getInstance(RestController.class).close();
-        stopWatch.stop().start("transport");
-        injector.getInstance(TransportService.class).close();
-        stopWatch.stop().start("percolator_service");
-        injector.getInstance(PercolatorService.class).close();
-
-        for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
-            stopWatch.stop().start("plugin(" + plugin.getName() + ")");
-            injector.getInstance(plugin).close();
-        }
-
-        stopWatch.stop().start("script");
-        injector.getInstance(ScriptService.class).close();
-
-        stopWatch.stop().start("thread_pool");
-        injector.getInstance(ThreadPool.class).shutdown();
-        try {
-            injector.getInstance(ThreadPool.class).awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            // ignore
-        }
-        stopWatch.stop().start("thread_pool_force_shutdown");
-        try {
-            injector.getInstance(ThreadPool.class).shutdownNow();
-        } catch (Exception e) {
-            // ignore
-        }
-        stopWatch.stop();
-
-        if (logger.isTraceEnabled()) {
-            logger.trace("Close times for each service:\n{}", stopWatch.prettyPrint());
-        }
-
-        injector.getInstance(NodeEnvironment.class).close();
-        injector.getInstance(CacheRecycler.class).close();
-        injector.getInstance(PageCacheRecycler.class).close();
-        Injectors.close(injector);
-
-        CachedStreams.clear();
-
-        logger.info("closed");
     }
 
     public void close() {
@@ -545,6 +450,11 @@ public final class InternalNode implements Node {
         return lifecycle.closed();
     }
 
+    @Override
+    public boolean isDisabled() {
+        return lifecycle.disabled();
+    }
+
     public Injector injector() {
         return this.injector;
     }
@@ -564,8 +474,13 @@ public final class InternalNode implements Node {
             Signal.handle(signal, new SignalHandler() {
                 @Override
                 public void handle(Signal sig) {
-                    node.decommission();
-                    System.exit(0);
+                    node.disable();
+                    if (node.isDisabled()) {
+                        node.close();
+                        System.exit(0);
+                    } else {
+                        node.start();
+                    }
                 }
             });
         } catch (IllegalArgumentException e) {

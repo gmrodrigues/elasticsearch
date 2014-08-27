@@ -79,13 +79,19 @@ public class Bootstrap {
             Signal.handle(signal, new SignalHandler() {
                 @Override
                 public void handle(Signal sig) {
-                    node.decommission();
-                    System.exit(0);
+                    node.disable();
+                    if (node.isDisabled()) {
+                        node.close();
+                        System.exit(0);
+                    } else {
+                        node.start();
+                    }
                 }
             });
         } catch (IllegalArgumentException e) {
             logger.info("SIGUSR2 signal not supported on {}.", System.getProperty("os.name"));
         }
+
         if (addShutdownHook) {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
