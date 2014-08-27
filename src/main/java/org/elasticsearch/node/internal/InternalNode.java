@@ -268,7 +268,6 @@ public final class InternalNode implements Node {
         return this;
     }
 
-
     @Override
     public Node stop() {
         if (!lifecycle.moveToStopped()) {
@@ -318,44 +317,43 @@ public final class InternalNode implements Node {
         return this;
     }
 
-    public Node doDecommission() {
-        if (!lifecycle.moveToStopped()) {
+    public Node disable() {
+        if (!lifecycle.moveToDisabled()) {
             return this;
         }
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
-        logger.info("decommissioning...");
+        logger.info("disabling...");
 
-        injector.getInstance(TribeService.class).decommission();
-        injector.getInstance(BulkUdpService.class).decommission();
-        injector.getInstance(ResourceWatcherService.class).decommission();
+        injector.getInstance(TribeService.class).disable();
+        injector.getInstance(BulkUdpService.class).disable();
+        injector.getInstance(ResourceWatcherService.class).disable();
         if (settings.getAsBoolean("http.enabled", true)) {
-            injector.getInstance(HttpServer.class).decommission();
+            injector.getInstance(HttpServer.class).disable();
         }
-        injector.getInstance(MappingUpdatedAction.class).stop();
-        injector.getInstance(RiversManager.class).decommission();
+        injector.getInstance(RiversManager.class).disable();
 
-        injector.getInstance(SnapshotsService.class).decommission();
+        injector.getInstance(SnapshotsService.class).disable();
         // stop any changes happening as a result of cluster state changes
-        injector.getInstance(IndicesClusterStateService.class).decommission();
+        injector.getInstance(IndicesClusterStateService.class).disable();
         // we close indices first, so operations won't be allowed on it
-        injector.getInstance(IndexingMemoryController.class).decommission();
-        injector.getInstance(IndicesTTLService.class).decommission();
-        injector.getInstance(IndicesService.class).decommission();
+        injector.getInstance(IndexingMemoryController.class).disable();
+        injector.getInstance(IndicesTTLService.class).disable();
+        injector.getInstance(IndicesService.class).disable();
 
-        injector.getInstance(RoutingService.class).decommission();
-        injector.getInstance(ClusterService.class).decommission();
-        injector.getInstance(DiscoveryService.class).decommission();
-        injector.getInstance(MonitorService.class).decommission();
-        injector.getInstance(GatewayService.class).decommission();
-        injector.getInstance(SearchService.class).decommission();
-        injector.getInstance(RestController.class).decommission();
-        injector.getInstance(TransportService.class).decommission();
+        injector.getInstance(RoutingService.class).disable();
+        injector.getInstance(ClusterService.class).disable();
+        injector.getInstance(DiscoveryService.class).disable();
+        injector.getInstance(MonitorService.class).disable();
+        injector.getInstance(GatewayService.class).disable();
+        injector.getInstance(SearchService.class).disable();
+        injector.getInstance(RestController.class).disable();
+        injector.getInstance(TransportService.class).disable();
 
         for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
-            injector.getInstance(plugin).decommission();
+            injector.getInstance(plugin).disable();
         }
 
-        logger.info("decommissioned");
+        logger.info("disabled");
 
         return this;
     }
@@ -554,6 +552,11 @@ public final class InternalNode implements Node {
         return lifecycle.closed();
     }
 
+    @Override
+    public boolean isDisabled() {
+        return lifecycle.disabled();
+    }
+
     public Injector injector() {
         return this.injector;
     }
@@ -573,8 +576,13 @@ public final class InternalNode implements Node {
             Signal.handle(signal, new SignalHandler() {
                 @Override
                 public void handle(Signal sig) {
-                    node.decommission();
-                    System.exit(0);
+                    node.disable();
+                    if (node.isDisabled()) {
+                        node.close();
+                        System.exit(0);
+                    } else {
+                        node.start();
+                    }
                 }
             });
         } catch (IllegalArgumentException e) {

@@ -45,8 +45,8 @@ public class OpenChannelsHandler implements ChannelUpstreamHandler {
     final CounterMetric openChannelsMetric = new CounterMetric();
     final CounterMetric totalChannelsMetric = new CounterMetric();
 
-    final AtomicBoolean closing = new AtomicBoolean(false);
-    final SettableFuture<Boolean> allClosed = SettableFuture.create();
+    final AtomicBoolean disabled = new AtomicBoolean(false);
+    final SettableFuture<Boolean> noOpenChannels = SettableFuture.create();
 
     final ESLogger logger;
 
@@ -58,11 +58,9 @@ public class OpenChannelsHandler implements ChannelUpstreamHandler {
         public void operationComplete(ChannelFuture future) throws Exception {
             boolean removed = openChannels.remove(future.getChannel());
             if (removed) {
-                logger.info("removed open channel, {} remaining. closing: {} ", openChannels.size(), closing.get());
                 openChannelsMetric.dec();
-                if (closing.get() && openChannels.isEmpty()) {
-                    logger.info("setting allClosed future");
-                    allClosed.set(true);
+                if (disabled.get() && openChannels.isEmpty()) {
+                    noOpenChannels.set(true);
                 }
             }
             if (logger.isTraceEnabled()) {
@@ -73,7 +71,7 @@ public class OpenChannelsHandler implements ChannelUpstreamHandler {
 
     @Override
     public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
-        if (e instanceof UpstreamMessageEvent && closing.get()) {
+        if (e instanceof UpstreamMessageEvent && disabled.get()) {
             // TODO transport response?
             DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.SERVICE_UNAVAILABLE);
             HttpHeaders.setContentLength(response, 0);
@@ -106,20 +104,21 @@ public class OpenChannelsHandler implements ChannelUpstreamHandler {
         return totalChannelsMetric.count();
     }
 
-    public void decommission() {
-        logger.info("decommissioning http.. setting close to true");
-        closing.set(true);
+    public void enable() {
+        disabled.set(false);
+    }
+
+    public void disable() {
+        disabled.set(true);
         if (openChannels.isEmpty()) {
             return;
         }
         try {
             // TODO: timeout from configuration
-            logger.info("decommissioning http.. waiting for closed connections");
-            allClosed.get(2, TimeUnit.MINUTES);
+            noOpenChannels.get(2, TimeUnit.MINUTES);
         } catch (InterruptedException | TimeoutException | ExecutionException e) {
             Thread.interrupted();
         }
-        logger.info("decommissioning finished");
     }
 
     public void close() {
