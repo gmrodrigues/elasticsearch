@@ -79,13 +79,18 @@ public abstract class AbstractLifecycleComponent<T> extends AbstractComponent im
         if (!lifecycle.canMoveToStarted()) {
             return (T) this;
         }
-        for (LifecycleListener listener : listeners) {
-            listener.beforeStart();
-        }
-        doStart();
-        lifecycle.moveToStarted();
-        for (LifecycleListener listener : listeners) {
-            listener.afterStart();
+        if (lifecycle.disabled()) {
+            doEnable();
+            lifecycle.moveToStarted();
+        } else {
+            for (LifecycleListener listener : listeners) {
+                listener.beforeStart();
+            }
+            doStart();
+            lifecycle.moveToStarted();
+            for (LifecycleListener listener : listeners) {
+                listener.afterStart();
+            }
         }
         return (T) this;
     }
@@ -110,26 +115,25 @@ public abstract class AbstractLifecycleComponent<T> extends AbstractComponent im
     }
 
     @SuppressWarnings("unchecked")
-    public T decommission() throws ElasticsearchException {
-        if (!lifecycle.canMoveToStopped()) {
+    @Override
+    public T disable() throws ElasticsearchException  {
+        if (!lifecycle.canMoveToDisabled()) {
             return (T) this;
         }
-        for (LifecycleListener listener : listeners) {
-            listener.beforeStop();
-        }
-        lifecycle.moveToStopped();
-        doDecommission();
-        for (LifecycleListener listener : listeners) {
-            listener.afterStop();
-        }
+        lifecycle.moveToDisabled();
+        doDisable();
         return (T) this;
     }
 
-    protected abstract void doStop() throws ElasticsearchException;
+    /**
+     * This is called in {@link #start()} if the Lifecycle state is disabled.
+     * This should enable the component to make it fully operational again.
+     */
+    protected void doEnable() throws ElasticsearchException {}
 
-    protected void doDecommission() throws ElasticsearchException {
-        doStop();
-    }
+    protected void doDisable() throws ElasticsearchException {}
+
+    protected abstract void doStop() throws ElasticsearchException;
 
     @Override
     public void close() throws ElasticsearchException {
