@@ -113,7 +113,7 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
             @Override
             public void onFailure(Throwable e) {
                 logger.error("[{}] error disabling allocation", e, localNodeId());
-                canceWithExceptionIfPresent(e);
+                cancelWithExceptionIfPresent(e);
             }
         });
 
@@ -121,20 +121,20 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
         return future;
     }
 
-    private void canceWithExceptionIfPresent(Throwable e) {
+    private void cancelWithExceptionIfPresent(Throwable e) {
         synchronized (futureLock) {
             SettableFuture<DeallocationResult> future = waitForFullDeallocation;
             if (future != null) {
                 future.setException(e);
+                waitForFullDeallocation = null;
             }
-            waitForFullDeallocation = null;
         }
     }
 
     @Override
     public boolean cancel() {
         boolean cancelled = removeExclusion(localNodeId());
-        canceWithExceptionIfPresent(new DeallocationCancelledException(localNodeId()));
+        cancelWithExceptionIfPresent(new DeallocationCancelledException(localNodeId()));
         if (cancelled) {
             logger.debug("[{}] deallocation cancelled", localNodeId());
         } else {
