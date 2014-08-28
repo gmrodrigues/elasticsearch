@@ -23,22 +23,14 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthStatus;
 import org.elasticsearch.cluster.ClusterService;
-import org.elasticsearch.cluster.node.DiscoveryNode;
-import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ImmutableSettings;
-import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.elasticsearch.test.InternalTestCluster;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
-import java.io.IOException;
-import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -46,61 +38,12 @@ import java.util.concurrent.TimeoutException;
 import static org.hamcrest.Matchers.is;
 
 @ElasticsearchIntegrationTest.ClusterScope(scope = ElasticsearchIntegrationTest.Scope.TEST, numDataNodes = 3)
-public class AllShardsDeallocatorTest extends ElasticsearchIntegrationTest {
+public class AllShardsDeallocatorTest extends DeallocatorTest {
 
     static {
         ClassLoader.getSystemClassLoader().setDefaultAssertionStatus(true);
         Loggers.getLogger(AllShardsDeallocator.class).setLevel("TRACE");
         System.setProperty(TESTS_CLUSTER, ""); // ensure InternalTestCluster
-    }
-
-    @Rule
-    public ExpectedException expectedException = ExpectedException.none();
-
-    private DiscoveryNode takeDownNode;
-
-    private static String mappingSource;
-
-    @BeforeClass
-    public static void prepareClass() throws IOException {
-        mappingSource = XContentFactory.jsonBuilder().startObject().startObject("properties")
-                .startObject("_id")
-                .field("type", "integer")
-                .endObject()
-                .startObject("name")
-                .field("type", "string")
-                .endObject()
-                .endObject()
-                .endObject().string();
-    }
-
-    @Before
-    public void prepare() throws Exception {
-        RoutingNode[] nodes = clusterService().state().routingNodes().toArray();
-        takeDownNode = nodes[randomInt(nodes.length-1)].node();
-    }
-
-    private void createIndices() throws Exception {
-        client().admin().indices()
-                .prepareCreate("t0")
-                .addMapping("default", mappingSource)
-                .setSettings(ImmutableSettings.builder().put("number_of_shards", 2).put("number_of_replicas", 0))
-                .execute().actionGet();
-        client().admin().indices()
-                .prepareCreate("t1")
-                .addMapping("default",mappingSource)
-                .setSettings(ImmutableSettings.builder().put("number_of_shards", 2).put("number_of_replicas", 1))
-                .execute().actionGet();
-        ensureGreen();
-
-        for (String table : Arrays.asList("t0", "t1")) {
-            for (int i = 0; i<10; i++) {
-                client().prepareIndex(table, "default")
-                        .setId(String.valueOf(randomInt()))
-                        .setSource(ImmutableMap.<String, Object>of("name", randomAsciiOfLength(10))).execute().actionGet();
-            }
-        }
-        refresh();
     }
 
     @Test
@@ -117,6 +60,8 @@ public class AllShardsDeallocatorTest extends ElasticsearchIntegrationTest {
         assertThat(
                 ((InternalTestCluster)cluster()).getInstance(ClusterService.class, takeDownNode.name()).state().routingNodes().node(takeDownNode.id()).size(),
                 is(0));
+        ClusterHealthStatus status = client().admin().cluster().prepareHealth().setWaitForGreenStatus().setTimeout("2s").execute().actionGet().getStatus();
+        assertThat(status, is(ClusterHealthStatus.GREEN));
     }
 
     @Test

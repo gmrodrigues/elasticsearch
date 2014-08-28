@@ -21,10 +21,7 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
-import com.google.common.base.Predicate;
 import com.google.common.util.concurrent.ListenableFuture;
-import org.elasticsearch.cluster.routing.MutableShardRouting;
-import org.elasticsearch.common.Nullable;
 
 /**
  * deallocates shards on one node, moving them to other nodes
@@ -53,23 +50,6 @@ public interface Deallocator {
             return didDeallocate;
         }
     }
-
-    static final Predicate<MutableShardRouting> ALL_SHARDS = new Predicate<MutableShardRouting>() {
-        @Override
-        public boolean apply(@Nullable MutableShardRouting input) {
-            return input != null
-                    && (input.started() || input.initializing());
-        }
-    };
-
-    static final Predicate<MutableShardRouting> ALL_PRIMARY_SHARDS = new Predicate<MutableShardRouting>() {
-        @Override
-        public boolean apply(@Nullable MutableShardRouting input) {
-            return input != null
-                    && (input.started() || input.initializing())
-                    && input.primary();
-        }
-    };
 
     /**
      * asynchronously deallocate shard of the local node
