@@ -19,6 +19,7 @@
 
 package org.elasticsearch.node.internal;
 
+import org.elasticsearch.cluster.service.GracefulStop;
 import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.node.Node;
 import org.elasticsearch.node.service.NodeService;
@@ -40,5 +41,6 @@ public class NodeModule extends AbstractModule {
         bind(Node.class).toInstance(node);
         bind(NodeSettingsService.class).asEagerSingleton();
         bind(NodeService.class).asEagerSingleton();
+        bind(GracefulStop.class).asEagerSingleton();
     }
 }

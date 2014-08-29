@@ -57,7 +57,7 @@ public interface Node extends Releasable{
     /**
      * disables the node,
      */
-    Node disable();
+    boolean disable();
 
     /**
      * Closes the node (and {@link #stop}s if its running).
