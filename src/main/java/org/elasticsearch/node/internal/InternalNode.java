@@ -274,15 +274,18 @@ public final class InternalNode implements Node {
 
     @Override
     public Node stop() {
-        if (!lifecycle.moveToStopped()) {
-            return this;
-        }
-
+        // FIXME: if stop() is called it is already in a shutdown hook which means that jvm will be terminated :(
         if (!lifecycle.disabled()) {
             GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
             if (gracefulStop.isDefault()) {
-                disable();
+                boolean disabled = disable();
+                if (!disabled && !gracefulStop.forceStop()) {
+                    return this;
+                }
             }
+        }
+        if (!lifecycle.moveToStopped()) {
+            return this;
         }
 
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
@@ -329,9 +332,9 @@ public final class InternalNode implements Node {
         return this;
     }
 
-    public Node disable() {
+    public boolean disable() {
         if (!lifecycle.moveToDisabled()) {
-            return this;
+            return false;
         }
 
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
@@ -367,11 +370,10 @@ public final class InternalNode implements Node {
         }
 
         GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
-        gracefulStop.deallocate();
-
+        boolean deallocated = gracefulStop.deallocate();
         logger.info("disabled");
 
-        return this;
+        return deallocated;
     }
 
     @Override
@@ -592,10 +594,8 @@ public final class InternalNode implements Node {
             Signal.handle(signal, new SignalHandler() {
                 @Override
                 public void handle(Signal sig) {
-                    node.disable();
-                    if (node.isDisabled()) {
-                        node.close();
-                        System.exit(0);
+                    if (node.disable()) {
+                        System.exit(0); // this will run the shutdown hook and call node.close()
                     } else {
                         node.start();
                     }
