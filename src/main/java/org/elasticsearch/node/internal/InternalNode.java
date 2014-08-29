@@ -38,6 +38,7 @@ import org.elasticsearch.cluster.action.index.MappingUpdatedAction;
 import org.elasticsearch.cluster.routing.RoutingService;
 import org.elasticsearch.cluster.routing.allocation.AllocationService;
 import org.elasticsearch.cluster.routing.allocation.deallocator.DeallocatorModule;
+import org.elasticsearch.cluster.service.GracefulStop;
 import org.elasticsearch.common.StopWatch;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.component.Lifecycle;
@@ -265,6 +266,9 @@ public final class InternalNode implements Node {
 
         logger.info("started");
 
+        GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
+        gracefulStop.cancelDeAllocationIfRunning();
+
         return this;
     }
 
@@ -273,6 +277,14 @@ public final class InternalNode implements Node {
         if (!lifecycle.moveToStopped()) {
             return this;
         }
+
+        if (!lifecycle.disabled()) {
+            GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
+            if (gracefulStop.isDefault()) {
+                disable();
+            }
+        }
+
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
         logger.info("stopping ...");
 
@@ -321,6 +333,7 @@ public final class InternalNode implements Node {
         if (!lifecycle.moveToDisabled()) {
             return this;
         }
+
         ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
         logger.info("disabling...");
 
@@ -352,6 +365,9 @@ public final class InternalNode implements Node {
         for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
             injector.getInstance(plugin).disable();
         }
+
+        GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
+        gracefulStop.deallocate();
 
         logger.info("disabled");
 
