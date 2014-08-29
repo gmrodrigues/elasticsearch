@@ -79,10 +79,8 @@ public class Bootstrap {
             Signal.handle(signal, new SignalHandler() {
                 @Override
                 public void handle(Signal sig) {
-                    node.disable();
-                    if (node.isDisabled()) {
-                        node.close();
-                        System.exit(0);
+                    if (node.disable()) {
+                        System.exit(0); // this calls the shutdown hook and does node.close()
                     } else {
                         node.start();
                     }
@@ -96,7 +94,7 @@ public class Bootstrap {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
                 public void run() {
-                    node.close();
+                     node.close();
                 }
             });
         }
