@@ -219,6 +219,9 @@ public class Lifecycle {
         if (localState == State.CLOSED) {
             return false;
         }
+        if (localState == State.DISABLED) {
+            return false; // need to stop first
+        }
         if (localState == State.STARTED) {
             throw new ElasticsearchIllegalStateException("Can't move to closed before moving to stopped mode");
         }

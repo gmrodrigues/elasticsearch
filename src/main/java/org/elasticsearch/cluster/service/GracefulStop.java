@@ -26,22 +26,28 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.node.settings.NodeSettingsService;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class GracefulStop {
 
     private final Deallocators deallocators;
     private AtomicBoolean gracefulStop = new AtomicBoolean(false);
+    private AtomicBoolean forceStop = new AtomicBoolean(false);
+    private AtomicReference<TimeValue> timeout = new AtomicReference<>();
     private final ESLogger logger = Loggers.getLogger(getClass());
     private ListenableFuture<Deallocator.DeallocationResult> deallocateFuture;
 
     private static class SettingNames {
         private static final String IS_DEFAULT = "cluster.graceful_stop.is_default";
+        private static final String TIMEOUT = "cluster.graceful_stop.timeout";
+        private static final String FORCE = "cluster.graceful_stop.force";
     }
 
     @Inject
@@ -50,11 +56,15 @@ public class GracefulStop {
                         Deallocators deallocators) {
         this.deallocators = deallocators;
         gracefulStop.set(settings.getAsBoolean(SettingNames.IS_DEFAULT, false));
+        timeout.set(TimeValue.parseTimeValue(settings.get(SettingNames.TIMEOUT, "2h"), TimeValue.timeValueHours(2)));
+        forceStop.set(settings.getAsBoolean(SettingNames.FORCE, false));
 
         nodeSettingsService.addListener(new NodeSettingsService.Listener() {
             @Override
             public void onRefreshSettings(Settings settings) {
                 gracefulStop.set(settings.getAsBoolean(SettingNames.IS_DEFAULT, false));
+                forceStop.set(settings.getAsBoolean(SettingNames.FORCE, false));
+                timeout.set(TimeValue.parseTimeValue(settings.get(SettingNames.TIMEOUT, "2h"), TimeValue.timeValueHours(2)));
             }
         });
     }
@@ -63,12 +73,20 @@ public class GracefulStop {
         return gracefulStop.get();
     }
 
-    public void deallocate() {
+    public boolean forceStop() {
+        return forceStop.get();
+    }
+
+    public boolean deallocate() {
         deallocateFuture = deallocators.deallocate();
         try {
-            deallocateFuture.get(10, TimeUnit.MINUTES);
+            TimeValue timeValue = timeout.get();
+            Deallocator.DeallocationResult deallocationResult = deallocateFuture.get(timeValue.getSeconds(), TimeUnit.SECONDS);
+
+            return deallocationResult.success();
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             logger.error("error while de-allocating node", e);
+            return false;
         }
     }
 
