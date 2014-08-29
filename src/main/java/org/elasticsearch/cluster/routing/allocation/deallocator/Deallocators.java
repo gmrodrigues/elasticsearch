@@ -72,12 +72,14 @@ public class Deallocators implements Deallocator {
 
     @Override
     public boolean isDeallocating() {
+        // TODO: fix: if the MIN_AVAILABLE has changed it is not possible to cancel the deallocation
         return getDeallocator().isDeallocating();
     }
 
     private Deallocator getDeallocator() {
         Deallocator deallocator;
-        String minAvailability = clusterService.state().metaData().settings().get(GRACEFUL_STOP_MIN_AVAILABILITY);
+        // TODO: change default to primaries
+        String minAvailability = clusterService.state().metaData().settings().get(GRACEFUL_STOP_MIN_AVAILABILITY, "full");
         switch (minAvailability) {
             case "primaries":
                 deallocator = primariesDeallocator;
