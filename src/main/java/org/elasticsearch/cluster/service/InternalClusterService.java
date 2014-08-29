@@ -251,7 +251,7 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
     }
 
     public void submitStateUpdateTask(final String source, Priority priority, final ClusterStateUpdateTask updateTask) {
-        if (!lifecycle.started()) {
+        if (!(lifecycle.started() || lifecycle.disabled())) {
             return;
         }
         try {
@@ -317,7 +317,7 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
 
         @Override
         public void run() {
-            if (!lifecycle.started()) {
+            if (!(lifecycle.started() || lifecycle.disabled())) {
                 logger.debug("processing [{}]: ignoring, cluster_service not started", source);
                 return;
             }
