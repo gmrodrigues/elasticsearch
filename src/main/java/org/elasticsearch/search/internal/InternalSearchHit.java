@@ -463,7 +463,7 @@ public class InternalSearchHit implements SearchHit {
                 }
                 String fieldName = field.getName();
                 if (field.isMetadataField()) {
-                    builder.field(fieldName, field.value());
+                    builder.field(fieldName, (Object) field.value());
                 } else {
                     builder.startArray(fieldName);
                     for (Object value : field.getValues()) {
