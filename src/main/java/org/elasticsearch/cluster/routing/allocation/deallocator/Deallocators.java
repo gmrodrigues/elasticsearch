@@ -21,12 +21,14 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Deallocators implements Deallocator {
 
@@ -35,6 +37,8 @@ public class Deallocators implements Deallocator {
     private final AllShardsDeallocator allShardsDeallocator;
     private final PrimariesDeallocator primariesDeallocator;
     private final ClusterService clusterService;
+
+    private AtomicReference<Deallocator> pendingDeallocation = new AtomicReference<>();
 
     private Deallocator noOpDeallocator = new Deallocator() {
         @Override
@@ -62,18 +66,35 @@ public class Deallocators implements Deallocator {
 
     @Override
     public ListenableFuture<Deallocator.DeallocationResult> deallocate() {
-        return getDeallocator().deallocate();
+        final Deallocator deallocator = getDeallocator();
+        if (!pendingDeallocation.compareAndSet(null, deallocator)) {
+            throw new IllegalStateException("Node already deallocating");
+        }
+        ListenableFuture<DeallocationResult> future = deallocator.deallocate();
+        Futures.addCallback(future, new FutureCallback<DeallocationResult>() {
+            @Override
+            public void onSuccess(DeallocationResult result) {
+                pendingDeallocation.compareAndSet(deallocator, null);
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                pendingDeallocation.compareAndSet(deallocator, null);
+            }
+        });
+        return future;
     }
 
     @Override
     public boolean cancel() {
-        return getDeallocator().cancel();
+        Deallocator deallocator = pendingDeallocation.getAndSet(null);
+        return deallocator != null && deallocator.cancel();
     }
 
     @Override
     public boolean isDeallocating() {
-        // TODO: fix: if the MIN_AVAILABLE has changed it is not possible to cancel the deallocation
-        return getDeallocator().isDeallocating();
+        Deallocator deallocator = pendingDeallocation.get();
+        return deallocator != null && deallocator.isDeallocating();
     }
 
     private Deallocator getDeallocator() {
