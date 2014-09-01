@@ -269,16 +269,6 @@ public final class InternalNode implements Node {
 
     @Override
     public Node stop() {
-        // FIXME: if stop() is called it is already in a shutdown hook which means that jvm will be terminated :(
-        if (!lifecycle.disabled()) {
-            GracefulStop gracefulStop = injector.getInstance(GracefulStop.class);
-            if (gracefulStop.isDefault()) {
-                boolean disabled = disable();
-                if (!disabled && !gracefulStop.forceStop()) {
-                    return this;
-                }
-            }
-        }
         if (!lifecycle.moveToStopped()) {
             return this;
         }
@@ -368,7 +358,7 @@ public final class InternalNode implements Node {
         boolean deallocated = gracefulStop.deallocate();
         logger.info("disabled");
 
-        return deallocated;
+        return deallocated || gracefulStop.forceStop();
     }
 
     @Override
