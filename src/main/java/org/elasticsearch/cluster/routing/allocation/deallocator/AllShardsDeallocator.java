@@ -21,6 +21,7 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
+import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
@@ -32,7 +33,9 @@ import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsResp
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.cluster.ClusterChangedEvent;
 import org.elasticsearch.cluster.ClusterService;
+import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateListener;
+import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
@@ -146,6 +149,35 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
     @Override
     public boolean isDeallocating() {
         return waitForFullDeallocation != null || deallocatingNodes.contains(localNodeId());
+    }
+
+    /**
+     * can deallocate iff:
+     * number of data nodes > max(number_of_replicas)+1 of indices with shards on local node
+     * that means we need a spare node to allocate the shards to
+     */
+    @Override
+    public boolean canDeallocate() {
+        ClusterState clusterState = clusterService.state();
+        int numNodes = clusterState.nodes().dataNodes().size();
+        int maxReplicas = -1;
+        RoutingNode localNode = clusterState.routingNodes().node(localNodeId());
+        for (ObjectObjectCursor<String, IndexMetaData> entry : clusterState.metaData().indices()) {
+            if (!localNode.shardsWithState(entry.key, ShardRoutingState.STARTED, ShardRoutingState.INITIALIZING, ShardRoutingState.RELOCATING).isEmpty()) {
+                maxReplicas = Math.max(maxReplicas, entry.value.numberOfReplicas());
+            }
+        }
+        return numNodes > maxReplicas+1;
+    }
+
+    /**
+     * @return true if this node has no shards
+     */
+    @Override
+    public boolean isNoOp() {
+        ClusterState state = clusterService.state();
+        RoutingNode node = state.routingNodes().node(localNodeId());
+        return node.size() == 0;
     }
 
     /**
