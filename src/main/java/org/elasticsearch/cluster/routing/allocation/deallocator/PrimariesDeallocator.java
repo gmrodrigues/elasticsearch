@@ -242,8 +242,7 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
 
     private boolean localNodeIsExcluded() {
         synchronized (deallocatingIndicesLock) {
-            for (Map.Entry<String, Set<String>> entry : deallocatingIndices.entrySet()) {
-                Set<String> excludeNodes = entry.getValue();
+            for (Set<String> excludeNodes : deallocatingIndices.values()) {
                 if (excludeNodes != null && excludeNodes.contains(localNodeId())) {
                     return true;
                 }
