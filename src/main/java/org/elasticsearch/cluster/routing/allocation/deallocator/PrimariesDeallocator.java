@@ -222,6 +222,25 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return localNodeFuture != null || localNodeIsExcluded();
     }
 
+    /**
+     * This deallocator can always deallocate
+     */
+    @Override
+    public boolean canDeallocate() {
+        return true;
+    }
+
+    /**
+     * @return true if this node has no primary shards with 0 replicas
+     * or no shards at all
+     */
+    @Override
+    public boolean isNoOp() {
+        ClusterState state = clusterService.state();
+        RoutingNode node = state.routingNodes().node(localNodeId());
+        return node.size() == 0 || localZeroReplicaIndices(node, state.metaData()).isEmpty();
+    }
+
     private boolean localNodeIsExcluded() {
         synchronized (deallocatingIndicesLock) {
             for (Map.Entry<String, Set<String>> entry : deallocatingIndices.entrySet()) {

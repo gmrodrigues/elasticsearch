@@ -67,7 +67,7 @@ public class NodeDisableTest extends ElasticsearchTestCase {
         assertThat(response.getStatusCode(), is(200));
 
         httpClient.close();
-        node.disable();
+        assertThat(node.disable(), is(true));
 
         httpClient = HttpClients.createDefault();
         response = new HttpRequestBuilder(httpClient)
