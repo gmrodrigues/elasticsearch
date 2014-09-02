@@ -150,9 +150,12 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
     }
 
     /**
-     * can deallocate iff:
-     * number of data nodes > max(number_of_replicas)+1 of indices with shards on local node
-     * that means we need a spare node to allocate the shards to
+     * can deallocate if:
+     * we have one spare node which does not contain a replica or primary
+     * of any index which has shards on this node,
+     * so we can move the shards on this node to it.
+     *
+     * More technically: number of data nodes > (maximum number_of_replicas of indices with shards on this node + 1)
      */
     @Override
     public boolean canDeallocate() {
