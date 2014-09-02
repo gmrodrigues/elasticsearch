@@ -68,4 +68,14 @@ public interface Deallocator {
     public boolean cancel();
 
     public boolean isDeallocating();
+
+    /**
+     * @return true if this deallocator can finish its job succesfully
+     */
+    public boolean canDeallocate();
+
+    /**
+     * @return true if this deallocator would have nothing to do on deallocate()
+     */
+    public boolean isNoOp();
 }

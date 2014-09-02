@@ -20,6 +20,7 @@
 package org.elasticsearch.cluster.service;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.routing.allocation.deallocator.Deallocator;
 import org.elasticsearch.cluster.routing.allocation.deallocator.Deallocators;
 import org.elasticsearch.common.inject.Inject;
@@ -38,55 +39,74 @@ import java.util.concurrent.atomic.AtomicReference;
 public class GracefulStop {
 
     private final Deallocators deallocators;
-    private AtomicBoolean gracefulStop = new AtomicBoolean(false);
+    private final ClusterService clusterService;
     private AtomicBoolean forceStop = new AtomicBoolean(false);
+    private AtomicBoolean reallocate = new AtomicBoolean(true);
     private AtomicReference<TimeValue> timeout = new AtomicReference<>();
     private final ESLogger logger = Loggers.getLogger(getClass());
     private ListenableFuture<Deallocator.DeallocationResult> deallocateFuture;
 
     private static class SettingNames {
-        private static final String IS_DEFAULT = "cluster.graceful_stop.is_default";
         private static final String TIMEOUT = "cluster.graceful_stop.timeout";
         private static final String FORCE = "cluster.graceful_stop.force";
+        private static final String REALLOCATE = "cluster.graceful_stop.reallocate";
     }
 
     @Inject
     public GracefulStop(Settings settings,
+                        ClusterService clusterService,
                         NodeSettingsService nodeSettingsService,
                         Deallocators deallocators) {
         this.deallocators = deallocators;
-        gracefulStop.set(settings.getAsBoolean(SettingNames.IS_DEFAULT, false));
+        this.clusterService = clusterService;
         timeout.set(TimeValue.parseTimeValue(settings.get(SettingNames.TIMEOUT, "2h"), TimeValue.timeValueHours(2)));
         forceStop.set(settings.getAsBoolean(SettingNames.FORCE, false));
-
+        reallocate.set(settings.getAsBoolean(SettingNames.REALLOCATE, true));
         nodeSettingsService.addListener(new NodeSettingsService.Listener() {
             @Override
             public void onRefreshSettings(Settings settings) {
-                gracefulStop.set(settings.getAsBoolean(SettingNames.IS_DEFAULT, false));
                 forceStop.set(settings.getAsBoolean(SettingNames.FORCE, false));
                 timeout.set(TimeValue.parseTimeValue(settings.get(SettingNames.TIMEOUT, "2h"), TimeValue.timeValueHours(2)));
+                reallocate.set(settings.getAsBoolean(SettingNames.REALLOCATE, true));
             }
         });
-    }
-
-    public boolean isDefault() {
-        return gracefulStop.get();
     }
 
     public boolean forceStop() {
         return forceStop.get();
     }
 
-    public boolean deallocate() {
-        deallocateFuture = deallocators.deallocate();
-        try {
-            TimeValue timeValue = timeout.get();
-            Deallocator.DeallocationResult deallocationResult = deallocateFuture.get(timeValue.getSeconds(), TimeUnit.SECONDS);
+    public boolean reallocate() {
+        return reallocate.get();
+    }
 
-            return deallocationResult.success();
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            logger.error("error while de-allocating node", e);
-            return false;
+    public boolean isSingleNode() {
+        return clusterService.state().nodes().size() == 1;
+    }
+
+    public boolean deallocate() {
+        if (isSingleNode()) {
+            return true; // shortcut for single node cluster
+        }
+        if (reallocate()) {
+            if (deallocators.canDeallocate()) {
+                deallocateFuture = deallocators.deallocate();
+                try {
+                    TimeValue timeValue = timeout.get();
+                    Deallocator.DeallocationResult deallocationResult = deallocateFuture.get(timeValue.getSeconds(), TimeUnit.SECONDS);
+
+                    return deallocationResult.success();
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    logger.error("error while de-allocating node", e);
+                    return false;
+                }
+            } else {
+                logger.error("cannot deallocate");
+                return false;
+            }
+        } else {
+            // return true, if a node shutdown would result in the desired min_availability
+            return deallocators.isNoOp();
         }
     }
 

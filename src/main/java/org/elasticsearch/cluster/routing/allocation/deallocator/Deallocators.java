@@ -21,6 +21,7 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
+import com.google.common.base.Objects;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -54,6 +55,16 @@ public class Deallocators implements Deallocator {
         @Override
         public boolean isDeallocating() {
             return false;
+        }
+
+        @Override
+        public boolean canDeallocate() {
+            return true;
+        }
+
+        @Override
+        public boolean isNoOp() {
+            return true;
         }
     };
 
@@ -95,6 +106,18 @@ public class Deallocators implements Deallocator {
     public boolean isDeallocating() {
         Deallocator deallocator = pendingDeallocation.get();
         return deallocator != null && deallocator.isDeallocating();
+    }
+
+    @Override
+    public boolean canDeallocate() {
+        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), getDeallocator());
+        return deallocator.canDeallocate();
+    }
+
+    @Override
+    public boolean isNoOp() {
+        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), getDeallocator());
+        return deallocator.isNoOp();
     }
 
     private Deallocator getDeallocator() {
