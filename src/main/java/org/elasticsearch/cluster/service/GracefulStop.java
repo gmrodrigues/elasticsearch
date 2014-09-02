@@ -46,10 +46,10 @@ public class GracefulStop {
     private final ESLogger logger = Loggers.getLogger(getClass());
     private ListenableFuture<Deallocator.DeallocationResult> deallocateFuture;
 
-    private static class SettingNames {
-        private static final String TIMEOUT = "cluster.graceful_stop.timeout";
-        private static final String FORCE = "cluster.graceful_stop.force";
-        private static final String REALLOCATE = "cluster.graceful_stop.reallocate";
+    public static class SettingNames {
+        public static final String TIMEOUT = "cluster.graceful_stop.timeout";
+        public static final String FORCE = "cluster.graceful_stop.force";
+        public static final String REALLOCATE = "cluster.graceful_stop.reallocate";
     }
 
     @Inject

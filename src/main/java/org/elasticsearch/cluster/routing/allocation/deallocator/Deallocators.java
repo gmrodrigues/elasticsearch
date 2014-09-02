@@ -81,7 +81,7 @@ public class Deallocators implements Deallocator {
 
     @Override
     public ListenableFuture<Deallocator.DeallocationResult> deallocate() {
-        final Deallocator deallocator = getDeallocator();
+        final Deallocator deallocator = deallocator();
         if (!pendingDeallocation.compareAndSet(null, deallocator)) {
             throw new IllegalStateException("Node already deallocating");
         }
@@ -108,25 +108,28 @@ public class Deallocators implements Deallocator {
 
     @Override
     public boolean isDeallocating() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), getDeallocator());
+        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.isDeallocating();
     }
 
     @Override
     public boolean canDeallocate() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), getDeallocator());
+        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.canDeallocate();
     }
 
     @Override
     public boolean isNoOp() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), getDeallocator());
+        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.isNoOp();
     }
 
-    private Deallocator getDeallocator() {
+    /**
+     * get deallocator according to current min_availability setting.
+     * this might not be the one this node is currently deallocating with.
+     */
+    private Deallocator deallocator() {
         Deallocator deallocator;
-        // TODO: change default to primaries
         String minAvailability = clusterService.state().metaData().settings().get(GRACEFUL_STOP_MIN_AVAILABILITY, MinAvailability.PRIMARIES);
         switch (minAvailability) {
             case MinAvailability.PRIMARIES:
