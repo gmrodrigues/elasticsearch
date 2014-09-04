@@ -24,10 +24,14 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsRequest;
+import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsResponse;
+import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsResponse;
@@ -40,6 +44,7 @@ import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
+import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
@@ -47,6 +52,7 @@ import org.elasticsearch.common.settings.Settings;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * This deallocator only deallocates primary shards that have no replica.
@@ -64,6 +70,7 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
 
     private final ClusterService clusterService;
     private final TransportUpdateSettingsAction indicesUpdateSettingsAction;
+    private final TransportClusterUpdateSettingsAction clusterUpdateSettingsAction;
     private String localNodeId;
 
     private final Object localNodeFutureLock = new Object();
@@ -72,11 +79,15 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
     private final Object deallocatingIndicesLock = new Object();
     private volatile Map<String, Set<String>> deallocatingIndices;
 
+    private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
+
     @Inject
     public PrimariesDeallocator(ClusterService clusterService,
+                                TransportClusterUpdateSettingsAction clusterUpdateSettingsAction,
                                 TransportUpdateSettingsAction indicesUpdateSettingsAction) {
         super(ImmutableSettings.EMPTY);
         this.clusterService = clusterService;
+        this.clusterUpdateSettingsAction = clusterUpdateSettingsAction;
         this.indicesUpdateSettingsAction = indicesUpdateSettingsAction;
         this.deallocatingIndices = new ConcurrentHashMap<>();
         this.clusterService.add(this);
@@ -101,6 +112,35 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return zeroReplicaIndices;
     }
 
+    private void setAllocationEnableSetting(final String value, boolean async) {
+        ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
+        request.transientSettings(ImmutableSettings.builder().put(
+                EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
+                value));
+
+        if (async) {
+            clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
+                @Override
+                public void onResponse(ClusterUpdateSettingsResponse response) {
+                    logger.trace("[{}] setting '{}' successfully set to {}",
+                            localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
+                }
+
+                @Override
+                public void onFailure(Throwable e) {
+                    logger.debug("[{}] error setting '{}'", e,
+                            localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
+                }
+            });
+        } else {
+            clusterUpdateSettingsAction.execute(request).actionGet();
+        }
+    }
+
+    private void resetAllocationEnableSetting() {
+        setAllocationEnableSetting(allocationEnableSetting.get(), true); // avoid deadlock
+    }
+
     @Override
     public ListenableFuture<DeallocationResult> deallocate() {
         if (isDeallocating()) {
@@ -119,6 +159,13 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
             return Futures.immediateFuture(DeallocationResult.SUCCESS_NOTHING_HAPPENED);
         }
 
+        // enable PRIMARIES allocation to make sure shards are moved, keep the old value
+        allocationEnableSetting.set(
+                clusterService.state().metaData().settings().get(
+                        EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
+                        EnableAllocationDecider.Allocation.ALL.name())); // global default
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name(), false);
+
         UpdateSettingsRequest[] settingsRequests = new UpdateSettingsRequest[zeroReplicaIndices.size()];
         synchronized (deallocatingIndicesLock) {
             int i = 0;
@@ -135,6 +182,17 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         }
         synchronized (localNodeFutureLock) {
             localNodeFuture = SettableFuture.create();
+            Futures.addCallback(localNodeFuture, new FutureCallback<DeallocationResult>() {
+                @Override
+                public void onSuccess(DeallocationResult result) {
+                    resetAllocationEnableSetting();
+                }
+
+                @Override
+                public void onFailure(Throwable throwable) {
+                    resetAllocationEnableSetting();
+                }
+            });
         }
         for (final UpdateSettingsRequest request : settingsRequests) {
             indicesUpdateSettingsAction.execute(request, new ActionListener<UpdateSettingsResponse>() {

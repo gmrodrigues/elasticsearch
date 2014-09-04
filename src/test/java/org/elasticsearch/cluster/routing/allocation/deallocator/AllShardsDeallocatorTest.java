@@ -20,10 +20,13 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
+import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthStatus;
 import org.elasticsearch.cluster.ClusterService;
+import org.elasticsearch.cluster.ClusterState;
+import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
@@ -34,6 +37,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 
 @ElasticsearchIntegrationTest.ClusterScope(scope = ElasticsearchIntegrationTest.Scope.TEST, numDataNodes = 3)
@@ -64,6 +68,34 @@ public class AllShardsDeallocatorTest extends DeallocatorTest {
     }
 
     @Test
+    public void testDeallocateAllocationEnableSetting() throws Exception {
+        createIndices();
+
+        cluster().client().admin().cluster().prepareUpdateSettings().setTransientSettings(
+                ImmutableSettings.builder().put(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, EnableAllocationDecider.Allocation.NONE.name())
+        ).execute().actionGet();
+
+        AllShardsDeallocator allShardsDeallocator = ((InternalTestCluster)cluster()).getInstance(AllShardsDeallocator.class, takeDownNode.name());
+        ListenableFuture<Deallocator.DeallocationResult> future = allShardsDeallocator.deallocate();
+        Deallocator.DeallocationResult result = future.get(1, TimeUnit.MINUTES);
+        assertThat(result.success(), is(true));
+        assertThat(result.didDeallocate(), is(true));
+
+        ClusterHealthStatus status = client().admin().cluster().prepareHealth().setWaitForGreenStatus().setTimeout("2s").execute().actionGet().getStatus();
+        assertThat(status, is(ClusterHealthStatus.GREEN));
+
+        waitFor(new Predicate<Void>() {
+            @Override
+            public boolean apply(Void aVoid) {
+                ClusterState newState = ((InternalTestCluster)cluster()).getInstance(ClusterService.class, takeDownNode.name()).state();
+
+                return newState.metaData().settings().get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "").equals(EnableAllocationDecider.Allocation.NONE.name()) &&
+                    newState.routingNodes().node(takeDownNode.id()).size() == 0;
+            }
+        }, 100);
+    }
+
+    @Test
     public void testDeallocateFailCannotMoveShards() throws Exception {
         client().admin().indices()
                 .prepareCreate("t2")
@@ -88,6 +120,39 @@ public class AllShardsDeallocatorTest extends DeallocatorTest {
         } catch (TimeoutException e) {
             assertThat(clusterService().state().routingNodes().node(takeDownNode.id()).size(), is(2));
         }
+    }
+
+    @Test
+    public void testCancelAllocationEnableSetting() throws Exception {
+        createIndices();
+
+        cluster().client().admin().cluster().prepareUpdateSettings().setTransientSettings(
+                ImmutableSettings.builder().put(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, EnableAllocationDecider.Allocation.NONE.name())
+        ).execute().actionGet();
+
+        AllShardsDeallocator allShardsDeallocator = ((InternalTestCluster)cluster()).getInstance(AllShardsDeallocator.class, takeDownNode.name());
+        assertThat(allShardsDeallocator.cancel(), is(false));
+        ListenableFuture<Deallocator.DeallocationResult> future = allShardsDeallocator.deallocate();
+        assertThat(allShardsDeallocator.isDeallocating(), is(true));
+        assertThat(allShardsDeallocator.cancel(), is(true));
+        assertThat(allShardsDeallocator.isDeallocating(), is(false));
+
+        try {
+            future.get(1, TimeUnit.SECONDS);
+            fail("no DeallocationCancelledException thrown");
+        } catch (ExecutionException e) {
+            assertThat(e.getCause(), instanceOf(DeallocationCancelledException.class));
+            assertThat(e.getCause().getMessage(), is("Deallocation cancelled for node '" + takeDownNode.id() + "'"));
+        }
+
+        waitFor(new Predicate<Void>() {
+            @Override
+            public boolean apply(Void aVoid) {
+                ClusterState newState = ((InternalTestCluster)cluster()).getInstance(ClusterService.class, takeDownNode.name()).state();
+
+                return newState.metaData().settings().get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "").equals(EnableAllocationDecider.Allocation.NONE.name());
+            }
+        }, 100);
     }
 
     @Test
