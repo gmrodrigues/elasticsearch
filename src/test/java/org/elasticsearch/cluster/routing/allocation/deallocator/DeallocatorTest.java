@@ -20,12 +20,15 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
+import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -33,6 +36,12 @@ import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 
 public abstract class DeallocatorTest extends ElasticsearchIntegrationTest {
 
@@ -42,6 +51,34 @@ public abstract class DeallocatorTest extends ElasticsearchIntegrationTest {
     protected DiscoveryNode takeDownNode;
 
     protected static String mappingSource;
+
+    private ThreadPool threadPool = new ThreadPool(getClass().getName());
+
+    /**
+     * wait until condition returns true or timeOutMillis have gone
+     */
+    protected void waitFor(final Predicate<Void> condition, long timeOutMillis) {
+        final SettableFuture<Void> future = SettableFuture.create();
+        threadPool.generic().execute(new Runnable() {
+            @Override
+            public void run() {
+                while (!condition.apply(null)) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        future.setException(e);
+                    }
+                }
+                future.set(null);
+            }
+        });
+
+        try {
+            assertThat(future.get(timeOutMillis, TimeUnit.MILLISECONDS), is(nullValue()));
+        } catch (InterruptedException|TimeoutException |ExecutionException e) {
+            fail(e.getMessage());
+        }
+    }
 
     @BeforeClass
     public static void prepareClass() throws IOException {

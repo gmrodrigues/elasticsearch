@@ -22,6 +22,7 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -37,6 +38,7 @@ import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
+import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.ESLogger;
@@ -45,6 +47,7 @@ import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
 
@@ -63,6 +66,7 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
     private volatile Set<String> deallocatingNodes;
     private volatile SettableFuture<DeallocationResult> waitForFullDeallocation = null;
 
+    private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
 
     @Inject
     public AllShardsDeallocator(ClusterService clusterService, TransportClusterUpdateSettingsAction clusterUpdateSettingsAction) {
@@ -78,6 +82,33 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
         }
         return localNodeId;
     }
+
+    private void setAllocationEnableSetting(final String value, boolean async) {
+        ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
+        request.transientSettings(ImmutableSettings.builder().put(
+                EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
+                value));
+
+        if (async) {
+            clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
+                @Override
+                public void onResponse(ClusterUpdateSettingsResponse response) {
+                    logger.trace("[{}] setting '{}' successfully set to {}", localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
+                }
+
+                @Override
+                public void onFailure(Throwable e) {
+                    logger.debug("[{}] error setting '{}'", e, localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
+                }
+            });
+        } else {
+            clusterUpdateSettingsAction.execute(request).actionGet();
+        }
+    }
+
+     private void resetAllocationEnableSetting() {
+         setAllocationEnableSetting(allocationEnableSetting.get(), true); // avoid deadlock
+     }
 
     /**
      * @see Deallocator
@@ -96,7 +127,25 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
             return Futures.immediateFuture(DeallocationResult.SUCCESS_NOTHING_HAPPENED);
         }
 
+        // enable all allocation to make sure shards are moved, keep the old value
+        allocationEnableSetting.set(
+                clusterService.state().metaData().settings().get(
+                        EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
+                        EnableAllocationDecider.Allocation.ALL.name()));
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name(), false);
+
         final SettableFuture<DeallocationResult> future = waitForFullDeallocation = SettableFuture.create();
+        Futures.addCallback(future, new FutureCallback<DeallocationResult>() {
+            @Override
+            public void onSuccess(DeallocationResult result) {
+                resetAllocationEnableSetting();
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                resetAllocationEnableSetting();
+            }
+        });
         ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
         synchronized (excludeNodesLock) {
             deallocatingNodes.add(localNodeId());
@@ -191,8 +240,9 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
     public void clusterChanged(ClusterChangedEvent event) {
         // apply new settings
         if (event.metaDataChanged()) {
+            Settings settings = event.state().metaData().settings();
             synchronized (excludeNodesLock) {
-                deallocatingNodes = Strings.splitStringByCommaToSet(event.state().metaData().settings().get(CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID, ""));
+                deallocatingNodes = Strings.splitStringByCommaToSet(settings.get(CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID, ""));
             }
         }
 
