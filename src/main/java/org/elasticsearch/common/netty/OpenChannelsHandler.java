@@ -114,8 +114,8 @@ public class OpenChannelsHandler implements ChannelUpstreamHandler {
             return;
         }
         try {
-            // TODO: timeout from configuration
-            noOpenChannels.get(2, TimeUnit.MINUTES);
+            // impatiently wait for some clients to be done
+            noOpenChannels.get(5, TimeUnit.SECONDS);
         } catch (InterruptedException | TimeoutException | ExecutionException e) {
             Thread.interrupted();
         }
