@@ -118,7 +118,7 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
     }
 
     public void addInitialStateBlock(ClusterBlock block) throws ElasticsearchIllegalStateException {
-        if (lifecycle.started()) {
+        if (lifecycle.started() || lifecycle.disabled()) {
             throw new ElasticsearchIllegalStateException("can't set initial block when started");
         }
         initialBlocks.addGlobalBlock(block);
@@ -126,7 +126,7 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
 
     @Override
     public void removeInitialStateBlock(ClusterBlock block) throws ElasticsearchIllegalStateException {
-        if (lifecycle.started()) {
+        if (lifecycle.started() || lifecycle.disabled()) {
             throw new ElasticsearchIllegalStateException("can't set initial block when started");
         }
         initialBlocks.removeGlobalBlock(block);
@@ -550,7 +550,7 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
                     failedNodesIt.remove();
                 }
             }
-            if (lifecycle.started()) {
+            if (lifecycle.started() || lifecycle.disabled()) {
                 reconnectToNodes = threadPool.schedule(reconnectInterval, ThreadPool.Names.GENERIC, this);
             }
         }
