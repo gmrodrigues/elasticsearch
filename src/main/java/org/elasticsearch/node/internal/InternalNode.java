@@ -362,7 +362,7 @@ public final class InternalNode implements Node {
     }
 
     public void close() {
-        if (lifecycle.started()) {
+        if (lifecycle.started() || lifecycle.disabled()) {
             stop();
         }
         if (!lifecycle.moveToClosed()) {

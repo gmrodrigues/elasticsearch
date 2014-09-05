@@ -137,7 +137,7 @@ public abstract class AbstractLifecycleComponent<T> extends AbstractComponent im
 
     @Override
     public void close() throws ElasticsearchException {
-        if (lifecycle.started()) {
+        if (lifecycle.started() || lifecycle.disabled()) {
             stop();
         }
         if (!lifecycle.canMoveToClosed()) {
