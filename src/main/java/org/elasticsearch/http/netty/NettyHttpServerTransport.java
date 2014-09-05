@@ -322,7 +322,7 @@ public class NettyHttpServerTransport extends AbstractLifecycleComponent<HttpSer
             }
             ctx.getChannel().close();
         } else {
-            if (!lifecycle.started()) {
+            if (!(lifecycle.started() || lifecycle.disabled())) {
                 // ignore
                 return;
             }
