@@ -97,7 +97,8 @@ public class EnableAllocationDecider extends AllocationDecider implements NodeSe
 
     @Override
     public void onRefreshSettings(Settings settings) {
-        Allocation enable = Allocation.parse(settings.get(CLUSTER_ROUTING_ALLOCATION_ENABLE, this.enable.name()));
+        Allocation enable = Allocation.parse(settings.get(CLUSTER_ROUTING_ALLOCATION_ENABLE,
+                this.settings.get(CLUSTER_ROUTING_ALLOCATION_ENABLE, Allocation.ALL.name())));
         if (enable != this.enable) {
             logger.info("updating [cluster.routing.allocation.enable] from [{}] to [{}]", this.enable, enable);
             EnableAllocationDecider.this.enable = enable;
