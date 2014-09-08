@@ -72,14 +72,28 @@ public class DiskThresholdDecider extends AllocationDecider {
     public static final String CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK = "cluster.routing.allocation.disk.watermark.low";
     public static final String CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK = "cluster.routing.allocation.disk.watermark.high";
 
+    public static final boolean DEFAULT_THRESHOLD_ENABLED = true;
+    private static final String DEFAULT_LOW_DISK_WATERMARK = "85%";
+    private static final String DEFAULT_HIGH_DISK_WATERMARK = "90%";
+
     class ApplySettings implements NodeSettingsService.Listener {
         @Override
         public void onRefreshSettings(Settings settings) {
-            String newLowWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK, null);
-            String newHighWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK, null);
-            Boolean newEnableSetting =  settings.getAsBoolean(CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED, null);
+            String newLowWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK,
+                    DiskThresholdDecider.this.settings.get(
+                            CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK,
+                            DEFAULT_LOW_DISK_WATERMARK));
+            String newHighWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK,
+                    DiskThresholdDecider.this.settings.get(
+                            CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK,
+                            DEFAULT_HIGH_DISK_WATERMARK));
+            Boolean newEnableSetting =  settings.getAsBoolean(
+                    CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
+                    DiskThresholdDecider.this.settings.getAsBoolean(
+                            CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
+                            DEFAULT_THRESHOLD_ENABLED));
 
-            if (newEnableSetting != null) {
+            if (newEnableSetting != null && newEnableSetting != DiskThresholdDecider.this.enabled) {
                 logger.info("updating [{}] from [{}] to [{}]", CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
                         DiskThresholdDecider.this.enabled, newEnableSetting);
                 DiskThresholdDecider.this.enabled = newEnableSetting;
@@ -88,17 +102,27 @@ public class DiskThresholdDecider extends AllocationDecider {
                 if (!validWatermarkSetting(newLowWatermark)) {
                     throw new ElasticsearchParseException("Unable to parse low watermark: [" + newLowWatermark + "]");
                 }
-                logger.info("updating [{}] to [{}]", CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK, newLowWatermark);
-                DiskThresholdDecider.this.freeDiskThresholdLow = 100.0 - thresholdPercentageFromWatermark(newLowWatermark);
-                DiskThresholdDecider.this.freeBytesThresholdLow = thresholdBytesFromWatermark(newLowWatermark);
+                Double newFreeDiskThresholdLow = 100.0 - thresholdPercentageFromWatermark(newLowWatermark);
+                ByteSizeValue newFreeBytesThresholdLow = thresholdBytesFromWatermark(newLowWatermark);
+                if (!freeDiskThresholdLow.equals(newFreeDiskThresholdLow)
+                        || freeBytesThresholdLow.bytes() != newFreeBytesThresholdLow.bytes()) {
+                    logger.info("updating [{}] to [{}]", CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK, newLowWatermark);
+                    DiskThresholdDecider.this.freeDiskThresholdLow = newFreeDiskThresholdLow;
+                    DiskThresholdDecider.this.freeBytesThresholdLow = newFreeBytesThresholdLow;
+                }
             }
             if (newHighWatermark != null) {
                 if (!validWatermarkSetting(newHighWatermark)) {
                     throw new ElasticsearchParseException("Unable to parse high watermark: [" + newHighWatermark + "]");
                 }
-                logger.info("updating [{}] to [{}]", CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK, newHighWatermark);
-                DiskThresholdDecider.this.freeDiskThresholdHigh = 100.0 - thresholdPercentageFromWatermark(newHighWatermark);
-                DiskThresholdDecider.this.freeBytesThresholdHigh = thresholdBytesFromWatermark(newHighWatermark);
+                Double newFreeDiskThresholdHigh = 100.0 - thresholdPercentageFromWatermark(newHighWatermark);
+                ByteSizeValue newFreeBytesThresholdHigh = thresholdBytesFromWatermark(newHighWatermark);
+                if (!freeDiskThresholdHigh.equals(newFreeDiskThresholdHigh)
+                        || freeBytesThresholdHigh.bytes() != newFreeBytesThresholdHigh.bytes()) {
+                    logger.info("updating [{}] to [{}]", CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK, newHighWatermark);
+                    DiskThresholdDecider.this.freeDiskThresholdHigh = 100.0 - thresholdPercentageFromWatermark(newHighWatermark);
+                    DiskThresholdDecider.this.freeBytesThresholdHigh = thresholdBytesFromWatermark(newHighWatermark);
+                }
             }
         }
     }
@@ -110,8 +134,10 @@ public class DiskThresholdDecider extends AllocationDecider {
     @Inject
     public DiskThresholdDecider(Settings settings, NodeSettingsService nodeSettingsService) {
         super(settings);
-        String lowWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK, "85%");
-        String highWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK, "90%");
+        String lowWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK,
+                DEFAULT_LOW_DISK_WATERMARK);
+        String highWatermark = settings.get(CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK,
+                DEFAULT_HIGH_DISK_WATERMARK);
 
         if (!validWatermarkSetting(lowWatermark)) {
             throw new ElasticsearchParseException("Unable to parse low watermark: [" + lowWatermark + "]");
@@ -126,7 +152,8 @@ public class DiskThresholdDecider extends AllocationDecider {
         this.freeBytesThresholdLow = thresholdBytesFromWatermark(lowWatermark);
         this.freeBytesThresholdHigh = thresholdBytesFromWatermark(highWatermark);
 
-        this.enabled = settings.getAsBoolean(CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED, true);
+        this.enabled = settings.getAsBoolean(CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
+                DEFAULT_THRESHOLD_ENABLED);
         nodeSettingsService.addListener(new ApplySettings());
     }
 

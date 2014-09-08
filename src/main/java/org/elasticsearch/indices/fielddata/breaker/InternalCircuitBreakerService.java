@@ -59,7 +59,10 @@ public class InternalCircuitBreakerService extends AbstractLifecycleComponent<In
         @Override
         public void onRefreshSettings(Settings settings) {
             // clear breaker now that settings have changed
-            long newMaxByteSizeValue = settings.getAsMemory(CIRCUIT_BREAKER_MAX_BYTES_SETTING, Long.toString(maxBytes)).bytes();
+            long newMaxByteSizeValue = settings.getAsMemory(CIRCUIT_BREAKER_MAX_BYTES_SETTING,
+                    InternalCircuitBreakerService.this.settings.get(
+                            CIRCUIT_BREAKER_MAX_BYTES_SETTING,
+                            DEFAULT_BREAKER_LIMIT)).bytes();
             boolean breakerResetNeeded = false;
 
             if (newMaxByteSizeValue != maxBytes) {
@@ -70,7 +73,9 @@ public class InternalCircuitBreakerService extends AbstractLifecycleComponent<In
                 breakerResetNeeded = true;
             }
 
-            double newOverhead = settings.getAsDouble(CIRCUIT_BREAKER_OVERHEAD_SETTING, overhead);
+            double newOverhead = settings.getAsDouble(CIRCUIT_BREAKER_OVERHEAD_SETTING,
+                    InternalCircuitBreakerService.this.settings.getAsDouble(
+                            CIRCUIT_BREAKER_OVERHEAD_SETTING, DEFAULT_OVERHEAD_CONSTANT));
             if (newOverhead != overhead) {
                 logger.info("updating [{}] from [{}] to [{}]", CIRCUIT_BREAKER_OVERHEAD_SETTING,
                         overhead, newOverhead);
