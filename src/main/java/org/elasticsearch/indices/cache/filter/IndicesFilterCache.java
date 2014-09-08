@@ -67,18 +67,22 @@ public class IndicesFilterCache extends AbstractComponent implements RemovalList
     public static final String INDICES_CACHE_FILTER_CLEAN_INTERVAL = "indices.cache.filter.clean_interval";
     public static final String INDICES_CACHE_FILTER_MINIMUM_ENTRY_WEIGHT = "indices.cache.filter.minimum_entry_weight";
 
+    private static final String DEFAULT_SIZE = "10%";
+
     class ApplySettings implements NodeSettingsService.Listener {
         @Override
         public void onRefreshSettings(Settings settings) {
             boolean replace = false;
-            String size = settings.get(INDICES_CACHE_FILTER_SIZE, IndicesFilterCache.this.size);
+            String size = settings.get(INDICES_CACHE_FILTER_SIZE,
+                    IndicesFilterCache.this.settings.get(INDICES_CACHE_FILTER_SIZE, DEFAULT_SIZE));
             if (!size.equals(IndicesFilterCache.this.size)) {
                 logger.info("updating [{}] from [{}] to [{}]",
                         INDICES_CACHE_FILTER_SIZE, IndicesFilterCache.this.size, size);
                 IndicesFilterCache.this.size = size;
                 replace = true;
             }
-            TimeValue expire = settings.getAsTime(INDICES_CACHE_FILTER_EXPIRE, IndicesFilterCache.this.expire);
+            TimeValue expire = settings.getAsTime(INDICES_CACHE_FILTER_EXPIRE,
+                    IndicesFilterCache.this.settings.getAsTime(INDICES_CACHE_FILTER_EXPIRE, null));
             if (!Objects.equal(expire, IndicesFilterCache.this.expire)) {
                 logger.info("updating [{}] from [{}] to [{}]",
                         INDICES_CACHE_FILTER_EXPIRE, IndicesFilterCache.this.expire, expire);
@@ -108,7 +112,7 @@ public class IndicesFilterCache extends AbstractComponent implements RemovalList
     public IndicesFilterCache(Settings settings, ThreadPool threadPool, NodeSettingsService nodeSettingsService) {
         super(settings);
         this.threadPool = threadPool;
-        this.size = settings.get(INDICES_CACHE_FILTER_SIZE, "10%");
+        this.size = settings.get(INDICES_CACHE_FILTER_SIZE, DEFAULT_SIZE);
         this.expire = settings.getAsTime(INDICES_CACHE_FILTER_EXPIRE, null);
         this.minimumEntryWeight = settings.getAsInt(INDICES_CACHE_FILTER_MINIMUM_ENTRY_WEIGHT, 1024); // 1k per entry minimum
         if (minimumEntryWeight <= 0) {
