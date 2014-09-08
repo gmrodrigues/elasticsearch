@@ -40,10 +40,10 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        SearchService service = getInstanceFromNode(SearchService.class);
+        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
 
         assertEquals(1, service.getActiveContexts());
-        service.doClose(); // this kills the keep-alive reaper we have to reset the node after this test
+        service.doClose();
         assertEquals(0, service.getActiveContexts());
     }
 
@@ -52,10 +52,10 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        SearchService service = getInstanceFromNode(SearchService.class);
+        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
 
         assertEquals(1, service.getActiveContexts());
-        service.doStop();
+        service.doClose();
         assertEquals(0, service.getActiveContexts());
     }
 
@@ -64,7 +64,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        SearchService service = getInstanceFromNode(SearchService.class);
+        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
 
         assertEquals(1, service.getActiveContexts());
         assertAcked(client().admin().indices().prepareDelete("index"));

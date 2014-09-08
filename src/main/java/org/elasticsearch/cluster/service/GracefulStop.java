@@ -28,6 +28,7 @@ import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.util.concurrent.FutureUtils;
 import org.elasticsearch.node.settings.NodeSettingsService;
 
 import java.io.Closeable;
@@ -122,9 +123,7 @@ public class GracefulStop implements Closeable {
         if (deallocators.isDeallocating()) {
             deallocators.cancel();
         }
-        if (deallocateFuture != null) {
-            deallocateFuture.cancel(true);
-            deallocateFuture = null;
-        }
+        FutureUtils.cancel(deallocateFuture);
+        deallocateFuture = null;
     }
 }

@@ -92,8 +92,8 @@ import org.elasticsearch.river.RiversManager;
 import org.elasticsearch.river.RiversModule;
 import org.elasticsearch.script.ScriptModule;
 import org.elasticsearch.script.ScriptService;
+import org.elasticsearch.search.InternalSearchService;
 import org.elasticsearch.search.SearchModule;
-import org.elasticsearch.search.SearchService;
 import org.elasticsearch.snapshots.SnapshotsService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.threadpool.ThreadPoolModule;
@@ -254,7 +254,7 @@ public final class InternalNode implements Node {
         injector.getInstance(TransportService.class).start();
         injector.getInstance(ClusterService.class).start();
         injector.getInstance(RoutingService.class).start();
-        injector.getInstance(SearchService.class).start();
+        injector.getInstance(InternalSearchService.class).start();
         injector.getInstance(MonitorService.class).start();
         injector.getInstance(RestController.class).start();
         DiscoveryService discoService = injector.getInstance(DiscoveryService.class).start();
@@ -308,7 +308,7 @@ public final class InternalNode implements Node {
         injector.getInstance(DiscoveryService.class).stop();
         injector.getInstance(MonitorService.class).stop();
         injector.getInstance(GatewayService.class).stop();
-        injector.getInstance(SearchService.class).stop();
+        injector.getInstance(InternalSearchService.class).stop();
         injector.getInstance(RestController.class).stop();
         injector.getInstance(TransportService.class).stop();
 
@@ -354,7 +354,7 @@ public final class InternalNode implements Node {
         injector.getInstance(DiscoveryService.class).disable();
         injector.getInstance(MonitorService.class).disable();
         injector.getInstance(GatewayService.class).disable();
-        injector.getInstance(SearchService.class).disable();
+        injector.getInstance(InternalSearchService.class).disable();
         injector.getInstance(RestController.class).disable();
         injector.getInstance(TransportService.class).disable();
 
@@ -368,7 +368,6 @@ public final class InternalNode implements Node {
 
         return deallocated || gracefulStop.forceStop();
     }
-
 
     // During concurrent close() calls we want to make sure that all of them return after the node has completed it's shutdown cycle.
     // If not, the hook that is added in Bootstrap#setup() will be useless: close() might not be executed, in case another (for example api) call
@@ -421,7 +420,7 @@ public final class InternalNode implements Node {
         stopWatch.stop().start("gateway");
         injector.getInstance(GatewayService.class).close();
         stopWatch.stop().start("search");
-        injector.getInstance(SearchService.class).close();
+        injector.getInstance(InternalSearchService.class).close();
         stopWatch.stop().start("rest");
         injector.getInstance(RestController.class).close();
         stopWatch.stop().start("transport");

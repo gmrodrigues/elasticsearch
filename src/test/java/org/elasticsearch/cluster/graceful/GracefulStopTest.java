@@ -33,8 +33,8 @@ import static org.hamcrest.core.Is.is;
         scope= ElasticsearchIntegrationTest.Scope.TEST,
         numDataNodes = 3,
         numClientNodes = 0,
-        enableRandomBenchNodes = false)
-public class GracefulStopTest extends GracefulStopTestBase {
+        randomDynamicTemplates = false)
+public class GracefulStopTest extends GracefulStopIntegrationTest {
 
     static {
         Loggers.getLogger(AbstractDeallocator.class).setLevel("TRACE");
