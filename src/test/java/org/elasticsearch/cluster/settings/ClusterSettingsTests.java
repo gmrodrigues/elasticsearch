@@ -20,17 +20,23 @@
 package org.elasticsearch.cluster.settings;
 
 import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsRequestBuilder;
+import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.Sets;
+import org.apache.lucene.store.StoreRateLimiting;
 import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsResponse;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.routing.allocation.decider.DisableAllocationDecider;
+import org.elasticsearch.common.inject.Injector;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.discovery.DiscoverySettings;
+import org.elasticsearch.indices.store.IndicesStore;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.hamcrest.Matchers;
 import org.junit.Test;
 
 import static org.elasticsearch.common.settings.ImmutableSettings.settingsBuilder;
+import java.util.Set;
+
 import static org.elasticsearch.test.ElasticsearchIntegrationTest.ClusterScope;
 import static org.elasticsearch.test.ElasticsearchIntegrationTest.Scope.TEST;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
@@ -180,4 +186,48 @@ public class ClusterSettingsTests extends ElasticsearchIntegrationTest {
         assertThat(response.getPersistentSettings().get(key1), nullValue());
         assertThat(response.getPersistentSettings().get(key2), notNullValue());
     }
+
+    public void testResetSettings() throws Exception {
+        String setting = IndicesStore.INDICES_STORE_THROTTLE_TYPE;
+
+        Settings transientSettings = ImmutableSettings.builder().put(setting, "none").build();
+        Settings persistentSettings = ImmutableSettings.builder().put(setting, "all").build();
+
+        ClusterUpdateSettingsResponse response = client().admin().cluster()
+                .prepareUpdateSettings()
+                .setTransientSettings(transientSettings)
+                .setPersistentSettings(persistentSettings)
+                .execute()
+                .actionGet();
+
+        assertAcked(response);
+        assertThat(response.getTransientSettings().get(setting), is("none"));
+        assertThat(response.getPersistentSettings().get(setting), is("all"));
+
+        Set<String> resetSettingNames = Sets.newHashSet();
+        resetSettingNames.add(setting);
+
+        response = client().admin().cluster()
+                .prepareUpdateSettings()
+                .setTransientSettingsToRemove(resetSettingNames)
+                .execute()
+                .actionGet();
+
+        assertAcked(response);
+
+        Injector injector = internalCluster().getInstance(Injector.class);
+        IndicesStore indicesStore = injector.getProvider(IndicesStore.class).get();
+        assertThat(indicesStore.rateLimiting().getType(), is(StoreRateLimiting.Type.ALL));
+
+        response = client().admin().cluster()
+                .prepareUpdateSettings()
+                .setPersistentSettingsToRemove(resetSettingNames)
+                .execute()
+                .actionGet();
+
+        assertAcked(response);
+
+        assertThat(indicesStore.rateLimiting().getType(), is(StoreRateLimiting.Type.MERGE));
+    }
+
 }

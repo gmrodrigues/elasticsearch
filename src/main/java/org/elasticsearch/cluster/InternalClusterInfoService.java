@@ -64,6 +64,8 @@ public class InternalClusterInfoService extends AbstractComponent implements Clu
     public static final String INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL = "cluster.info.update.interval";
     public static final String INTERNAL_CLUSTER_INFO_TIMEOUT = "cluster.info.update.timeout";
 
+    private static final TimeValue DEFAULT_UPDATE_INTERVAL = TimeValue.timeValueSeconds(30);
+    private static final TimeValue DEFAULT_TIMEOUT = TimeValue.timeValueSeconds(15);
     private volatile TimeValue updateFrequency;
 
     private volatile ImmutableMap<String, DiskUsage> usages;
@@ -89,9 +91,14 @@ public class InternalClusterInfoService extends AbstractComponent implements Clu
         this.transportIndicesStatsAction = transportIndicesStatsAction;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
-        this.updateFrequency = settings.getAsTime(INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, TimeValue.timeValueSeconds(30));
-        this.fetchTimeout = settings.getAsTime(INTERNAL_CLUSTER_INFO_TIMEOUT, TimeValue.timeValueSeconds(15));
+        this.updateFrequency = settings.getAsTime(INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL);
+
         this.enabled = settings.getAsBoolean(DiskThresholdDecider.CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED, true);
+        this.updateFrequency = settings.getAsTime(INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL);
+        this.fetchTimeout = settings.getAsTime(INTERNAL_CLUSTER_INFO_TIMEOUT, DEFAULT_TIMEOUT);
+        this.enabled = settings.getAsBoolean(
+                DiskThresholdDecider.CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
+                DiskThresholdDecider.DEFAULT_THRESHOLD_ENABLED);
         nodeSettingsService.addListener(new ApplySettings());
 
         // Add InternalClusterInfoService to listen for Master changes
@@ -103,11 +110,16 @@ public class InternalClusterInfoService extends AbstractComponent implements Clu
     class ApplySettings implements NodeSettingsService.Listener {
         @Override
         public void onRefreshSettings(Settings settings) {
-            TimeValue newUpdateFrequency = settings.getAsTime(INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, null);
+            TimeValue newUpdateFrequency = settings.getAsTime(
+                    INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL,
+                    InternalClusterInfoService.this.settings.getAsTime(
+                            INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL));
             // ClusterInfoService is only enabled if the DiskThresholdDecider is enabled
-            Boolean newEnabled = settings.getAsBoolean(DiskThresholdDecider.CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED, null);
+            Boolean newEnabled = settings.getAsBoolean(
+                    DiskThresholdDecider.CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED,
+                    DiskThresholdDecider.DEFAULT_THRESHOLD_ENABLED);
 
-            if (newUpdateFrequency != null) {
+            if (newUpdateFrequency != null && !updateFrequency.equals(newUpdateFrequency)) {
                 if (newUpdateFrequency.getMillis() < TimeValue.timeValueSeconds(10).getMillis()) {
                     logger.warn("[{}] set too low [{}] (< 10s)", INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL, newUpdateFrequency);
                     throw new IllegalStateException("Unable to set " + INTERNAL_CLUSTER_INFO_UPDATE_INTERVAL + " less than 10 seconds");
@@ -117,15 +129,17 @@ public class InternalClusterInfoService extends AbstractComponent implements Clu
                 }
             }
 
-            TimeValue newFetchTimeout = settings.getAsTime(INTERNAL_CLUSTER_INFO_TIMEOUT, null);
-            if (newFetchTimeout != null) {
+            TimeValue newFetchTimeout = settings.getAsTime(INTERNAL_CLUSTER_INFO_TIMEOUT,
+                    InternalClusterInfoService.this.settings.getAsTime(INTERNAL_CLUSTER_INFO_TIMEOUT, DEFAULT_TIMEOUT)
+            );
+            if (newFetchTimeout != null && !fetchTimeout.equals(newFetchTimeout)) {
                 logger.info("updating fetch timeout [{}] from [{}] to [{}]", INTERNAL_CLUSTER_INFO_TIMEOUT, fetchTimeout, newFetchTimeout);
                 InternalClusterInfoService.this.fetchTimeout = newFetchTimeout;
             }
 
 
             // We don't log about enabling it here, because the DiskThresholdDecider will already be logging about enable/disable
-            if (newEnabled != null) {
+            if (newEnabled != InternalClusterInfoService.this.enabled) {
                 InternalClusterInfoService.this.enabled = newEnabled;
             }
         }
