@@ -66,6 +66,7 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
     public static final String INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME = "indices.mapping.additional_mapping_change_time";
 
     private static final String ACTION_NAME = "cluster/mappingUpdated";
+    private static final TimeValue DEFAULT_ADDITIONAL_MAPPING_CHANGE_TIME = TimeValue.timeValueMillis(0);
 
     private final AtomicLong mappingUpdateOrderGen = new AtomicLong();
     private final MetaDataMappingService metaDataMappingService;
@@ -78,7 +79,11 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
         @Override
         public void onRefreshSettings(Settings settings) {
             final TimeValue current = MappingUpdatedAction.this.additionalMappingChangeTime;
-            final TimeValue newValue = settings.getAsTime(INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME, current);
+            final TimeValue newValue = settings.getAsTime(
+                    INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME,
+                    MappingUpdatedAction.this.settings.getAsTime(
+                            INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME,
+                            DEFAULT_ADDITIONAL_MAPPING_CHANGE_TIME));
             if (!current.equals(newValue)) {
                 logger.info("updating " + INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME + " from [{}] to [{}]", current, newValue);
                 MappingUpdatedAction.this.additionalMappingChangeTime = newValue;
@@ -92,7 +97,9 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
         super(settings, ACTION_NAME, transportService, clusterService, threadPool);
         this.metaDataMappingService = metaDataMappingService;
         // this setting should probably always be 0, just add the option to wait for more changes within a time window
-        this.additionalMappingChangeTime = settings.getAsTime(INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME, TimeValue.timeValueMillis(0));
+        this.additionalMappingChangeTime = settings.getAsTime(
+                INDICES_MAPPING_ADDITIONAL_MAPPING_CHANGE_TIME,
+                DEFAULT_ADDITIONAL_MAPPING_CHANGE_TIME);
         nodeSettingsService.addListener(new ApplySettings());
     }
 
