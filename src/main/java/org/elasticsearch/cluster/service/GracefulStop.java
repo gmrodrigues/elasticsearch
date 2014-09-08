@@ -123,9 +123,7 @@ public class GracefulStop implements Closeable {
         if (deallocators.isDeallocating()) {
             deallocators.cancel();
         }
-        if (deallocateFuture != null) {
-            FutureUtils.cancel(deallocateFuture);
-            deallocateFuture = null;
-        }
+        FutureUtils.cancel(deallocateFuture);
+        deallocateFuture = null;
     }
 }

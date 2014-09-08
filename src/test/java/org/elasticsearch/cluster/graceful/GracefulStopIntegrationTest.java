@@ -37,7 +37,7 @@ import org.junit.rules.ExpectedException;
 
 import java.util.concurrent.TimeUnit;
 
-public class GracefulStopBaseTest extends ElasticsearchIntegrationTest {
+public class GracefulStopIntegrationTest extends ElasticsearchIntegrationTest {
 
     static String mappingSource;
 

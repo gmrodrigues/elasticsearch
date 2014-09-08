@@ -93,7 +93,7 @@ import org.elasticsearch.node.internal.InternalNode;
 import org.elasticsearch.node.internal.InternalSettingsPreparer;
 import org.elasticsearch.node.service.NodeService;
 import org.elasticsearch.plugins.PluginsService;
-import org.elasticsearch.search.SearchService;
+import org.elasticsearch.search.InternalSearchService;
 import org.elasticsearch.test.cache.recycler.MockBigArraysModule;
 import org.elasticsearch.test.cache.recycler.MockPageCacheRecyclerModule;
 import org.elasticsearch.test.disruption.ServiceDisruptionScheme;
@@ -391,12 +391,12 @@ public final class InternalTestCluster extends TestCluster {
             builder.put("cache.recycler.page.type", RandomPicks.randomFrom(random, PageCacheRecycler.Type.values()));
         }
         if (random.nextInt(10) == 0) { // 10% of the nodes have a very frequent check interval
-            builder.put(SearchService.KEEPALIVE_INTERVAL_KEY, TimeValue.timeValueMillis(10 + random.nextInt(2000)));
+            builder.put(InternalSearchService.KEEPALIVE_INTERVAL_KEY, TimeValue.timeValueMillis(10 + random.nextInt(2000)));
         } else if (random.nextInt(10) != 0) { // 90% of the time - 10% of the time we don't set anything
-            builder.put(SearchService.KEEPALIVE_INTERVAL_KEY, TimeValue.timeValueSeconds(10 + random.nextInt(5 * 60)));
+            builder.put(InternalSearchService.KEEPALIVE_INTERVAL_KEY, TimeValue.timeValueSeconds(10 + random.nextInt(5 * 60)));
         }
         if (random.nextBoolean()) { // sometimes set a
-            builder.put(SearchService.DEFAUTL_KEEPALIVE_KEY, TimeValue.timeValueSeconds(100 + random.nextInt(5 * 60)));
+            builder.put(InternalSearchService.DEFAUTL_KEEPALIVE_KEY, TimeValue.timeValueSeconds(100 + random.nextInt(5 * 60)));
         }
         if (random.nextBoolean()) {
             // change threadpool types to make sure we don't have components that rely on the type of thread pools

@@ -28,8 +28,9 @@ import static org.hamcrest.core.Is.is;
 @ElasticsearchIntegrationTest.ClusterScope(
         scope = ElasticsearchIntegrationTest.Scope.TEST,
         numDataNodes = 1,
-        numClientNodes = 0)
-public class GracefulStopSingleNodeTest extends GracefulStopBaseTest {
+        numClientNodes = 0,
+        randomDynamicTemplates = false)
+public class GracefulStopSingleNodeTest extends GracefulStopIntegrationTest {
 
     private void assertSingleNodeGracefulStop() {
         assertThat(gracefulStop.deallocate(), is(true));
