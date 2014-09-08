@@ -91,8 +91,8 @@ import org.elasticsearch.river.RiversManager;
 import org.elasticsearch.river.RiversModule;
 import org.elasticsearch.script.ScriptModule;
 import org.elasticsearch.script.ScriptService;
+import org.elasticsearch.search.InternalSearchService;
 import org.elasticsearch.search.SearchModule;
-import org.elasticsearch.search.SearchService;
 import org.elasticsearch.snapshots.SnapshotsService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.threadpool.ThreadPoolModule;
@@ -248,7 +248,7 @@ public final class InternalNode implements Node {
         injector.getInstance(TransportService.class).start();
         injector.getInstance(ClusterService.class).start();
         injector.getInstance(RoutingService.class).start();
-        injector.getInstance(SearchService.class).start();
+        injector.getInstance(InternalSearchService.class).start();
         injector.getInstance(MonitorService.class).start();
         injector.getInstance(RestController.class).start();
         DiscoveryService discoService = injector.getInstance(DiscoveryService.class).start();
@@ -309,7 +309,7 @@ public final class InternalNode implements Node {
         injector.getInstance(DiscoveryService.class).stop();
         injector.getInstance(MonitorService.class).stop();
         injector.getInstance(GatewayService.class).stop();
-        injector.getInstance(SearchService.class).stop();
+        injector.getInstance(InternalSearchService.class).stop();
         injector.getInstance(RestController.class).stop();
         injector.getInstance(TransportService.class).stop();
 
@@ -351,7 +351,7 @@ public final class InternalNode implements Node {
         injector.getInstance(DiscoveryService.class).disable();
         injector.getInstance(MonitorService.class).disable();
         injector.getInstance(GatewayService.class).disable();
-        injector.getInstance(SearchService.class).disable();
+        injector.getInstance(InternalSearchService.class).disable();
         injector.getInstance(RestController.class).disable();
         injector.getInstance(TransportService.class).disable();
 
@@ -365,100 +365,6 @@ public final class InternalNode implements Node {
 
         return deallocated || gracefulStop.forceStop();
     }
-
-    @Override
-    public void decommission() {
-        if (lifecycle.started()) {
-            doDecommission();
-        }
-        if (!lifecycle.moveToClosed()) {
-            return;
-        }
-
-        ESLogger logger = Loggers.getLogger(Node.class, settings.get("name"));
-        logger.info("closing ...");
-
-        StopWatch stopWatch = new StopWatch("node_close");
-        stopWatch.start("tribe");
-        injector.getInstance(TribeService.class).close();
-        stopWatch.stop().start("bulk.udp");
-        injector.getInstance(BulkUdpService.class).close();
-        stopWatch.stop().start("http");
-        if (settings.getAsBoolean("http.enabled", true)) {
-            injector.getInstance(HttpServer.class).close();
-        }
-
-        stopWatch.stop().start("rivers");
-        injector.getInstance(RiversManager.class).close();
-
-        stopWatch.stop().start("snapshot_service");
-        injector.getInstance(SnapshotsService.class).close();
-        stopWatch.stop().start("client");
-        Releasables.close(injector.getInstance(Client.class));
-        stopWatch.stop().start("indices_cluster");
-        injector.getInstance(IndicesClusterStateService.class).close();
-        stopWatch.stop().start("indices");
-        injector.getInstance(IndicesFilterCache.class).close();
-        injector.getInstance(IndicesFieldDataCache.class).close();
-        injector.getInstance(IndexingMemoryController.class).close();
-        injector.getInstance(IndicesTTLService.class).close();
-        injector.getInstance(IndicesService.class).close();
-        stopWatch.stop().start("routing");
-        injector.getInstance(RoutingService.class).close();
-        stopWatch.stop().start("cluster");
-        injector.getInstance(ClusterService.class).close();
-        stopWatch.stop().start("discovery");
-        injector.getInstance(DiscoveryService.class).close();
-        stopWatch.stop().start("monitor");
-        injector.getInstance(MonitorService.class).close();
-        stopWatch.stop().start("gateway");
-        injector.getInstance(GatewayService.class).close();
-        stopWatch.stop().start("search");
-        injector.getInstance(SearchService.class).close();
-        stopWatch.stop().start("rest");
-        injector.getInstance(RestController.class).close();
-        stopWatch.stop().start("transport");
-        injector.getInstance(TransportService.class).close();
-        stopWatch.stop().start("percolator_service");
-        injector.getInstance(PercolatorService.class).close();
-
-        for (Class<? extends LifecycleComponent> plugin : pluginsService.services()) {
-            stopWatch.stop().start("plugin(" + plugin.getName() + ")");
-            injector.getInstance(plugin).close();
-        }
-
-        stopWatch.stop().start("script");
-        injector.getInstance(ScriptService.class).close();
-
-        stopWatch.stop().start("thread_pool");
-        injector.getInstance(ThreadPool.class).shutdown();
-        try {
-            injector.getInstance(ThreadPool.class).awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            // ignore
-        }
-        stopWatch.stop().start("thread_pool_force_shutdown");
-        try {
-            injector.getInstance(ThreadPool.class).shutdownNow();
-        } catch (Exception e) {
-            // ignore
-        }
-        stopWatch.stop();
-
-        if (logger.isTraceEnabled()) {
-            logger.trace("Close times for each service:\n{}", stopWatch.prettyPrint());
-        }
-
-        injector.getInstance(NodeEnvironment.class).close();
-        injector.getInstance(CacheRecycler.class).close();
-        injector.getInstance(PageCacheRecycler.class).close();
-        Injectors.close(injector);
-
-        CachedStreams.clear();
-
-        logger.info("closed");
-    }
-
 
     // During concurrent close() calls we want to make sure that all of them return after the node has completed it's shutdown cycle.
     // If not, the hook that is added in Bootstrap#setup() will be useless: close() might not be executed, in case another (for example api) call
@@ -510,7 +416,7 @@ public final class InternalNode implements Node {
         stopWatch.stop().start("gateway");
         injector.getInstance(GatewayService.class).close();
         stopWatch.stop().start("search");
-        injector.getInstance(SearchService.class).close();
+        injector.getInstance(InternalSearchService.class).close();
         stopWatch.stop().start("rest");
         injector.getInstance(RestController.class).close();
         stopWatch.stop().start("transport");

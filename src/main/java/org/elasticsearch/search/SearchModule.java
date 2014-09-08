@@ -57,7 +57,8 @@ public class SearchModule extends AbstractModule implements SpawnModules {
     protected void configure() {
         bind(DfsPhase.class).asEagerSingleton();
         bind(QueryPhase.class).asEagerSingleton();
-        bind(SearchService.class).asEagerSingleton();
+        // TODO:
+        //bind(SearchService.class).asEagerSingleton();
         bind(SearchPhaseController.class).asEagerSingleton();
 
         bind(FetchPhase.class).asEagerSingleton();

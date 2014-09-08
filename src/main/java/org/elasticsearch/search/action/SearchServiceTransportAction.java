@@ -49,7 +49,7 @@ import java.io.IOException;
 import java.util.concurrent.Callable;
 
 /**
- * An encapsulation of {@link org.elasticsearch.search.SearchService} operations exposed through
+ * An encapsulation of {@link org.elasticsearch.search.InternalSearchService} operations exposed through
  * transport.
  */
 public class SearchServiceTransportAction extends AbstractComponent {

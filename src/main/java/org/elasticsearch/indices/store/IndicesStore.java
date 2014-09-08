@@ -65,7 +65,6 @@ public class IndicesStore extends AbstractComponent implements ClusterStateListe
 
     private static final ByteSizeValue DEFAULT_INDICES_STORE_THROTTLE_MAX_BYTES_PER_SEC = new ByteSizeValue(20, ByteSizeUnit.MB);
 
->>>>>>> 6d8ae63... add support for resetting transient + persistent cluster settings
     private static final EnumSet<IndexShardState> ACTIVE_STATES = EnumSet.of(IndexShardState.STARTED, IndexShardState.RELOCATED);
 
     class ApplySettings implements NodeSettingsService.Listener {
