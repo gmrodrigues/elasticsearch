@@ -112,35 +112,35 @@ public class SearchService extends AbstractLifecycleComponent<SearchService> {
 
     private final ThreadPool threadPool;
 
-    private final ClusterService clusterService;
+    protected final ClusterService clusterService;
 
-    private final IndicesService indicesService;
+    protected final IndicesService indicesService;
 
     private final IndicesWarmer indicesWarmer;
 
-    private final ScriptService scriptService;
+    protected final ScriptService scriptService;
 
-    private final CacheRecycler cacheRecycler;
+    protected final CacheRecycler cacheRecycler;
 
-    private final PageCacheRecycler pageCacheRecycler;
+    protected final PageCacheRecycler pageCacheRecycler;
 
-    private final BigArrays bigArrays;
+    protected final BigArrays bigArrays;
 
-    private final DfsPhase dfsPhase;
+    protected final DfsPhase dfsPhase;
 
-    private final QueryPhase queryPhase;
+    protected final QueryPhase queryPhase;
 
-    private final FetchPhase fetchPhase;
+    protected final FetchPhase fetchPhase;
 
     private final IndicesQueryCache indicesQueryCache;
 
-    private final long defaultKeepAlive;
+    protected final long defaultKeepAlive;
 
     private final ScheduledFuture<?> keepAliveReaper;
 
-    private final AtomicLong idGenerator = new AtomicLong();
+    protected final AtomicLong idGenerator = new AtomicLong();
 
-    private final ConcurrentMapLong<SearchContext> activeContexts = ConcurrentCollections.newConcurrentMapLongWithAggressiveConcurrency();
+    protected final ConcurrentMapLong<SearchContext> activeContexts = ConcurrentCollections.newConcurrentMapLongWithAggressiveConcurrency();
 
     private final ImmutableMap<String, SearchParseElement> elementParsers;
 
@@ -630,16 +630,16 @@ public class SearchService extends AbstractLifecycleComponent<SearchService> {
         }
     }
 
-    private void contextProcessing(SearchContext context) {
+    protected void contextProcessing(SearchContext context) {
         // disable timeout while executing a search
         context.accessed(-1);
     }
 
-    private void contextProcessedSuccessfully(SearchContext context) {
+    protected void contextProcessedSuccessfully(SearchContext context) {
         context.accessed(threadPool.estimatedTimeInMillis());
     }
 
-    private void cleanContext(SearchContext context) {
+    protected void cleanContext(SearchContext context) {
         assert context == SearchContext.current();
         context.clearReleasables(Lifetime.PHASE);
         SearchContext.removeCurrent();
@@ -707,7 +707,7 @@ public class SearchService extends AbstractLifecycleComponent<SearchService> {
         request.source(processedQuery);
     }
 
-    private void parseSource(SearchContext context, BytesReference source) throws SearchParseException {
+    protected void parseSource(SearchContext context, BytesReference source) throws SearchParseException {
         // nothing to parse...
         if (source == null || source.length() == 0) {
             return;
