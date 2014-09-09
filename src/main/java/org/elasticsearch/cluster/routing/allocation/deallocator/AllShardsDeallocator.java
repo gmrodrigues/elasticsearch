@@ -131,8 +131,8 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
         allocationEnableSetting.set(
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                        EnableAllocationDecider.Allocation.ALL.name()));
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name(), false);
+                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase()));
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase(), false);
 
         final SettableFuture<DeallocationResult> future = waitForFullDeallocation = SettableFuture.create();
         Futures.addCallback(future, new FutureCallback<DeallocationResult>() {
