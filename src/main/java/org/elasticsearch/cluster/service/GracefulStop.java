@@ -98,6 +98,7 @@ public class GracefulStop {
                     return deallocationResult.success();
                 } catch (InterruptedException | ExecutionException | TimeoutException e) {
                     logger.error("error while de-allocating node", e);
+                    deallocators.cancel(); // cancel so state will be reset
                     return false;
                 }
             } else {
