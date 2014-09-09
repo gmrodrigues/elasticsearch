@@ -181,10 +181,20 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
         }
     }
 
+    private void cancelIfPresent() {
+        synchronized (futureLock) {
+            SettableFuture<DeallocationResult> future = waitForFullDeallocation;
+            if (future != null) {
+                future.cancel(true);
+                waitForFullDeallocation = null;
+            }
+        }
+    }
+
     @Override
     public boolean cancel() {
         boolean cancelled = removeExclusion(localNodeId());
-        cancelWithExceptionIfPresent(new DeallocationCancelledException(localNodeId()));
+        cancelIfPresent();
         if (cancelled) {
             logger.debug("[{}] deallocation cancelled", localNodeId());
         } else {

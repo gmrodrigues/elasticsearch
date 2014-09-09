@@ -177,20 +177,6 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                         EnableAllocationDecider.Allocation.ALL.name().toLowerCase())); // global default
         setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(), false);
 
-        UpdateSettingsRequest[] settingsRequests = new UpdateSettingsRequest[zeroReplicaIndices.size()];
-        synchronized (deallocatingIndicesLock) {
-            int i = 0;
-            for (String index : zeroReplicaIndices) {
-                Set<String> excludeNodes = deallocatingIndices.get(index);
-                if (excludeNodes == null) {
-                    excludeNodes = new HashSet<>();
-                    deallocatingIndices.put(index, excludeNodes);
-                }
-                excludeNodes.add(localNodeId());
-                settingsRequests[i++] = new UpdateSettingsRequest(ImmutableSettings.builder().put(EXCLUDE_NODE_ID_FROM_INDEX, COMMA_JOINER.join(excludeNodes)).build(), index);
-            }
-
-        }
         synchronized (localNodeFutureLock) {
             localNodeFuture = SettableFuture.create();
             Futures.addCallback(localNodeFuture, new FutureCallback<DeallocationResult>() {
@@ -205,24 +191,51 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                 }
             });
         }
-        for (final UpdateSettingsRequest request : settingsRequests) {
-            indicesUpdateSettingsAction.execute(request, new ActionListener<UpdateSettingsResponse>() {
-                @Override
-                public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
-                    logger.trace("successfully updated index settings");
-                    // do nothing
-                }
+        excludeNodeFromIndices(zeroReplicaIndices, new ActionListener<UpdateSettingsResponse>() {
+            @Override
+            public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
+                logger.trace("successfully updated index settings");
+                // do nothing
+            }
 
-                @Override
-                public void onFailure(Throwable e) {
-                    logger.error("error updating index settings", e);
-                    cancelWithExceptionIfPresent(e);
+            @Override
+            public void onFailure(Throwable e) {
+                logger.error("error updating index settings", e);
+                cancelWithExceptionIfPresent(e);
+            }
+        });
+        return localNodeFuture;
+    }
+
+    /**
+     * configures the index so no shard will be allocated on the local node and existing
+     * shards will be moved from it.
+     * @param indices a set containing the indices which should be removed from the local node
+     * @param listener an ActionListener that is called for every UpdateSettingsRequest
+     */
+    private void excludeNodeFromIndices(final Set<String> indices, ActionListener<UpdateSettingsResponse> listener) {
+        UpdateSettingsRequest[] settingsRequests = new UpdateSettingsRequest[indices.size()];
+        synchronized (deallocatingIndicesLock) {
+            int i = 0;
+            for (String index : indices) {
+                Set<String> excludeNodes = deallocatingIndices.get(index);
+                if (excludeNodes == null) {
+                    excludeNodes = new HashSet<>();
+                    deallocatingIndices.put(index, excludeNodes);
                 }
-            });
+                excludeNodes.add(localNodeId());
+                settingsRequests[i++] = new UpdateSettingsRequest(
+                        ImmutableSettings.builder()
+                                .put(EXCLUDE_NODE_ID_FROM_INDEX, COMMA_JOINER.join(excludeNodes))
+                                .build(),
+                        index);
+            }
 
         }
+        for (final UpdateSettingsRequest request : settingsRequests) {
+            indicesUpdateSettingsAction.execute(request, listener);
 
-        return localNodeFuture;
+        }
     }
 
     private boolean cancelWithExceptionIfPresent(Throwable e) {
@@ -238,10 +251,23 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return result;
     }
 
+    private boolean cancelIfPresent() {
+        boolean result = false;
+        synchronized (localNodeFutureLock) {
+            SettableFuture<DeallocationResult> future = localNodeFuture;
+            if (future != null) {
+                future.cancel(true);
+                localNodeFuture = null;
+                result = true;
+            }
+        }
+        return result;
+    }
+
     @Override
     public boolean cancel() {
         boolean cancelled = removeExclusion(localNodeId());
-        cancelled |= cancelWithExceptionIfPresent(new DeallocationCancelledException(localNodeId()));
+        cancelled |= cancelIfPresent();
         if (cancelled) {
             logger.info("[{}] primaries deallocation cancelled", localNodeId());
         } else {
@@ -340,16 +366,41 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
             }
         }
 
-        // remove removed nodes from deallocatingNodes list if we are master
-        if (event.nodesRemoved() && event.state().nodes().localNodeMaster()) {
-            for (DiscoveryNode node : event.nodesDelta().removedNodes()) {
-                if (removeExclusion(node.id())) {
-                    logger.trace("[{}] removed removed node {}", localNodeId(), node.id());
+        // exclusive master operation
+        if (event.state().nodes().localNodeMaster()) {
+            clusterChangedOnMaster(event);
+        }
+
+        if (localNodeFuture != null) { // not inside lock
+            // add exclusion for new indices, too
+            List<String> createdIndices = event.indicesCreated();
+            if (!createdIndices.isEmpty()) {
+                Set<String> newZeroReplicaIndices = new HashSet<>();
+                for (String indexName : createdIndices) {
+                    if (event.state().metaData().index(indexName).numberOfReplicas() == 0) {
+                        newZeroReplicaIndices.add(indexName);
+                    }
                 }
+                excludeNodeFromIndices(newZeroReplicaIndices, new ActionListener<UpdateSettingsResponse>() {
+                    @Override
+                    public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
+                        logger.trace("successfully updated index settings for new index");
+                        // do nothing
+                    }
+
+                    @Override
+                    public void onFailure(Throwable e) {
+                        logger.error("error updating index settings for new index", e);
+                        cancelWithExceptionIfPresent(e);
+                    }
+                });
+
             }
         }
+
         synchronized (localNodeFutureLock) {
             if (localNodeFuture != null) {
+
                 RoutingNode node = event.state().routingNodes().node(localNodeId());
                 Set<String> localZeroReplicaIndices = localZeroReplicaIndices(node, event.state().metaData());
                 if (localZeroReplicaIndices.isEmpty()) {
@@ -358,6 +409,20 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                     localNodeFuture = null;
                 } else {
                     logger.trace("[{}] zero replica primaries left for indices: {}", localNodeId(), COMMA_JOINER.join(localZeroReplicaIndices));
+                }
+            }
+        }
+    }
+
+    /**
+     * handle ClusterChangedEvent when local node is master
+     */
+    private void clusterChangedOnMaster(ClusterChangedEvent event) {
+        // remove removed nodes from deallocatingNodes list if we are master
+        if (event.nodesRemoved()) {
+            for (DiscoveryNode node : event.nodesDelta().removedNodes()) {
+                if (removeExclusion(node.id())) {
+                    logger.trace("[{}] removed removed node {}", localNodeId(), node.id());
                 }
             }
         }
