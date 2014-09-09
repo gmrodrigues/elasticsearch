@@ -163,8 +163,8 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         allocationEnableSetting.set(
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                        EnableAllocationDecider.Allocation.ALL.name())); // global default
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name(), false);
+                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase())); // global default
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(), false);
 
         UpdateSettingsRequest[] settingsRequests = new UpdateSettingsRequest[zeroReplicaIndices.size()];
         synchronized (deallocatingIndicesLock) {
