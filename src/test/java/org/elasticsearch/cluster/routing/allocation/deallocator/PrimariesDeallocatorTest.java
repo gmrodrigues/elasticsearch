@@ -34,7 +34,7 @@ import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.elasticsearch.test.InternalTestCluster;
 import org.junit.Test;
 
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.Matchers.*;
@@ -133,14 +133,8 @@ public class PrimariesDeallocatorTest extends DeallocatorTest {
         assertThat(deallocator.cancel(), is(true));
         assertThat(deallocator.isDeallocating(), is(false));
 
-        expectedException.expect(DeallocationCancelledException.class);
-        expectedException.expectMessage("Deallocation cancelled for node '" + takeDownNode.id() + "'");
-
-        try {
-            future.get(1, TimeUnit.SECONDS);
-        } catch (ExecutionException e) {
-            throw (Exception)e.getCause();
-        }
+        assertThat(future.isDone(), is(true));
+        assertThat(future.isCancelled(), is(true));
     }
 
     @Test
@@ -158,12 +152,14 @@ public class PrimariesDeallocatorTest extends DeallocatorTest {
         assertThat(deallocator.cancel(), is(true));
         assertThat(deallocator.isDeallocating(), is(false));
 
+        assertThat(future.isDone(), is(true));
+        assertThat(future.isCancelled(), is(true));
+
         try {
             future.get(1, TimeUnit.SECONDS);
-            fail("no DeallocationCancelledException thrown");
-        } catch (ExecutionException e) {
-            assertThat(e.getCause(), instanceOf(DeallocationCancelledException.class));
-            assertThat(e.getCause().getMessage(), is("Deallocation cancelled for node '" + takeDownNode.id() + "'"));
+            fail("no CancellationException thrown");
+        } catch (CancellationException e) {
+            // fine
         }
 
         waitFor(new Predicate<Void>() {
