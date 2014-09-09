@@ -100,6 +100,16 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return localNodeId;
     }
 
+    private Set<String> zeroReplicaIndices(MetaData clusterMetaData) {
+        final Set<String> zeroReplicaIndices = new HashSet<>();
+        for (ObjectObjectCursor<String, IndexMetaData> entry : clusterMetaData.indices()) {
+            if (entry.value.numberOfReplicas() == 0) {
+                zeroReplicaIndices.add(entry.key);
+            }
+        }
+        return zeroReplicaIndices;
+    }
+
     private Set<String> localZeroReplicaIndices(RoutingNode routingNode, MetaData clusterMetaData) {
         final Set<String> zeroReplicaIndices = new HashSet<>();
         for (ObjectObjectCursor<String, IndexMetaData> entry : clusterMetaData.indices()) {
@@ -152,13 +162,14 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         if (node.size() == 0) {
             return Futures.immediateFuture(DeallocationResult.SUCCESS_NOTHING_HAPPENED);
         }
-
-        final Set<String> zeroReplicaIndices = localZeroReplicaIndices(node, state.metaData());
-        if (zeroReplicaIndices.isEmpty()) {
+        MetaData clusterMetaData = state.metaData();
+        if (localZeroReplicaIndices(node, clusterMetaData).isEmpty()) {
             // no zero replica primaries on node
             return Futures.immediateFuture(DeallocationResult.SUCCESS_NOTHING_HAPPENED);
         }
 
+        final Set<String> zeroReplicaIndices = zeroReplicaIndices(clusterMetaData);
+        
         // enable PRIMARIES allocation to make sure shards are moved, keep the old value
         allocationEnableSetting.set(
                 clusterService.state().metaData().settings().get(
@@ -339,10 +350,8 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         }
         synchronized (localNodeFutureLock) {
             if (localNodeFuture != null) {
-                RoutingNode node = event.state().getRoutingNodes().node(localNodeId());
-                Set<String> localZeroReplicaIndices = localZeroReplicaIndices(
-                        node,
-                        event.state().metaData());
+                RoutingNode node = event.state().routingNodes().node(localNodeId());
+                Set<String> localZeroReplicaIndices = localZeroReplicaIndices(node, event.state().metaData());
                 if (localZeroReplicaIndices.isEmpty()) {
                     logger.info("[{}] primaries deallocation successful", localNodeId());
                     localNodeFuture.set(DeallocationResult.SUCCESS);
