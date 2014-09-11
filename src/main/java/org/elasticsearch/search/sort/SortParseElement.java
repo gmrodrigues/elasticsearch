@@ -51,7 +51,7 @@ import java.util.List;
 public class SortParseElement implements SearchParseElement {
 
     public static final SortField SORT_SCORE = new SortField(null, SortField.Type.SCORE);
-    private static final SortField SORT_SCORE_REVERSE = new SortField(null, SortField.Type.SCORE, true);
+    public static final SortField SORT_SCORE_REVERSE = new SortField(null, SortField.Type.SCORE, true);
     private static final SortField SORT_DOC = new SortField(null, SortField.Type.DOC);
     private static final SortField SORT_DOC_REVERSE = new SortField(null, SortField.Type.DOC, true);
 
