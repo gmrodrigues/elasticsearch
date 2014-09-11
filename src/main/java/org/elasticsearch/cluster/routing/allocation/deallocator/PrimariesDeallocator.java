@@ -78,6 +78,7 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
 
     private final Object deallocatingIndicesLock = new Object();
     private volatile Map<String, Set<String>> deallocatingIndices;
+    private final Set<String> newIndices = Sets.newConcurrentHashSet();
 
     private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
 
@@ -100,6 +101,11 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return localNodeId;
     }
 
+    /**
+     * return a set with all the indices that have zero replicas
+     *
+     * @param clusterMetaData the current clusterMetaData
+     */
     private Set<String> zeroReplicaIndices(MetaData clusterMetaData) {
         final Set<String> zeroReplicaIndices = new HashSet<>();
         for (ObjectObjectCursor<String, IndexMetaData> entry : clusterMetaData.indices()) {
@@ -110,6 +116,14 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return zeroReplicaIndices;
     }
 
+    /**
+     * return a set with all the indices that have
+     *
+     *  * zero replicas
+     *  * a shard (must be primary) on the local node
+     *
+     * @param clusterMetaData the current clusterMetaData
+     */
     private Set<String> localZeroReplicaIndices(RoutingNode routingNode, MetaData clusterMetaData) {
         final Set<String> zeroReplicaIndices = new HashSet<>();
         for (ObjectObjectCursor<String, IndexMetaData> entry : clusterMetaData.indices()) {
@@ -120,6 +134,21 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
             }
         }
         return zeroReplicaIndices;
+    }
+
+    private Set<String> localNewIndices(RoutingNode node, MetaData clusterMetaData) {
+        final Set<String> newLocalIndices = new HashSet<>();
+        synchronized (newIndices) {
+            for (String index : newIndices) {
+                IndexMetaData indexMetaData = clusterMetaData.index(index);
+                if (indexMetaData != null && indexMetaData.numberOfReplicas() == 0) {
+                    if (!node.shardsWithState(index, ShardRoutingState.INITIALIZING, ShardRoutingState.STARTED, ShardRoutingState.RELOCATING).isEmpty()) {
+                        newLocalIndices.add(index);
+                    }
+                }
+            }
+        }
+        return newLocalIndices;
     }
 
     private void setAllocationEnableSetting(final String value, boolean async) {
@@ -183,11 +212,13 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                 @Override
                 public void onSuccess(DeallocationResult result) {
                     resetAllocationEnableSetting();
+                    newIndices.clear();
                 }
 
                 @Override
                 public void onFailure(Throwable throwable) {
                     resetAllocationEnableSetting();
+                    newIndices.clear();
                 }
             });
         }
@@ -234,7 +265,6 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         }
         for (final UpdateSettingsRequest request : settingsRequests) {
             indicesUpdateSettingsAction.execute(request, listener);
-
         }
     }
 
@@ -372,16 +402,12 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         }
 
         if (localNodeFuture != null) { // not inside lock
-            // add exclusion for new indices, too
+            // add exclusion for all new indices, too
+            // because they will only have primaries during deallocation
             List<String> createdIndices = event.indicesCreated();
             if (!createdIndices.isEmpty()) {
-                Set<String> newZeroReplicaIndices = new HashSet<>();
-                for (String indexName : createdIndices) {
-                    if (event.state().metaData().index(indexName).numberOfReplicas() == 0) {
-                        newZeroReplicaIndices.add(indexName);
-                    }
-                }
-                excludeNodeFromIndices(newZeroReplicaIndices, new ActionListener<UpdateSettingsResponse>() {
+                newIndices.addAll(createdIndices);
+                excludeNodeFromIndices(newIndices, new ActionListener<UpdateSettingsResponse>() {
                     @Override
                     public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
                         logger.trace("successfully updated index settings for new index");
@@ -394,7 +420,6 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                         cancelWithExceptionIfPresent(e);
                     }
                 });
-
             }
         }
 
@@ -402,11 +427,15 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
             if (localNodeFuture != null) {
 
                 RoutingNode node = event.state().routingNodes().node(localNodeId());
-                Set<String> localZeroReplicaIndices = localZeroReplicaIndices(node, event.state().metaData());
-                if (localZeroReplicaIndices.isEmpty()) {
+                MetaData clusterMetaData = event.state().metaData();
+                Set<String> localZeroReplicaIndices = localZeroReplicaIndices(node, clusterMetaData);
+                Set<String> localNewIndices = localNewIndices(node, clusterMetaData);
+
+                if (localZeroReplicaIndices.isEmpty() && localNewIndices.isEmpty()) {
                     logger.info("[{}] primaries deallocation successful", localNodeId());
                     localNodeFuture.set(DeallocationResult.SUCCESS);
                     localNodeFuture = null;
+                    newIndices.clear();
                 } else {
                     logger.trace("[{}] zero replica primaries left for indices: {}", localNodeId(), COMMA_JOINER.join(localZeroReplicaIndices));
                 }
