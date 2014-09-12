@@ -44,6 +44,7 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 
+import java.util.Locale;
 import java.util.Set;
 
 public class AllShardsDeallocator extends AbstractDeallocator implements ClusterStateListener {
@@ -88,8 +89,8 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         allocationEnableSetting.set(
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase()));
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase());
+                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH)));
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH));
 
         final SettableFuture<DeallocationResult> future = waitForFullDeallocation = SettableFuture.create();
         Futures.addCallback(future, new FutureCallback<DeallocationResult>() {

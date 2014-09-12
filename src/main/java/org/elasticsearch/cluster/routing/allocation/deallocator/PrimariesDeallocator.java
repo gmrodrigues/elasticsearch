@@ -20,6 +20,7 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
+import com.google.common.base.Joiner;
 import com.google.common.base.Objects;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.FutureCallback;
@@ -27,6 +28,9 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.elasticsearch.action.admin.cluster.health.TransportClusterHealthAction;
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -44,6 +48,7 @@ import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDeci
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,6 +64,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class PrimariesDeallocator extends AbstractDeallocator implements ClusterStateListener {
 
+    private final TransportClusterHealthAction transportClusterHealthAction;
     private final Object localNodeFutureLock = new Object();
     private volatile SettableFuture<DeallocationResult> localNodeFuture;
 
@@ -69,15 +75,14 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
     private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
 
 
-
-
-
     @Inject
     public PrimariesDeallocator(ClusterService clusterService,
                                 TransportClusterUpdateSettingsAction clusterUpdateSettingsAction,
+                                TransportClusterHealthAction clusterHealthAction,
                                 TransportUpdateSettingsAction indicesUpdateSettingsAction) {
         super(clusterService, indicesUpdateSettingsAction, clusterUpdateSettingsAction);
         this.deallocatingIndices = new ConcurrentHashMap<>();
+        this.transportClusterHealthAction = clusterHealthAction;
         this.clusterService.add(this);
     }
 
@@ -156,8 +161,8 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         allocationEnableSetting.set(
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase())); // global default
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase());
+                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH))); // global default
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(Locale.ENGLISH));
 
         synchronized (localNodeFutureLock) {
             localNodeFuture = SettableFuture.create();
@@ -197,7 +202,8 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
      * @param indices a set containing the indices which should be removed from the local node
      * @param listener an ActionListener that is called for every UpdateSettingsRequest
      */
-    private void excludeNodeFromIndices(final Set<String> indices, ActionListener<UpdateSettingsResponse> listener) {
+    private void excludeNodeFromIndices(final Set<String> indices,
+                                        ActionListener<UpdateSettingsResponse> listener) {
         UpdateSettingsRequest[] settingsRequests = new UpdateSettingsRequest[indices.size()];
         synchronized (deallocatingIndicesLock) {
             int i = 0;
@@ -359,10 +365,40 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
 
         if (localNodeFuture != null) { // not inside lock
             // add exclusion for all new indices, too
-            // because they will only have primaries during deallocation
             List<String> createdIndices = event.indicesCreated();
             if (!createdIndices.isEmpty()) {
                 newIndices.addAll(createdIndices);
+                // wait for indices to become available first
+                ClusterHealthRequest request = new ClusterHealthRequest(newIndices.toArray(new String[newIndices.size()]));
+                request.waitForYellowStatus();
+                request.timeout(new TimeValue(60 * 1000)); // wait 60 seconds max
+                clusterChangeExecutor.enqueue(request, transportClusterHealthAction, new ActionListener<ClusterHealthResponse>() {
+                    @Override
+                    public void onResponse(ClusterHealthResponse clusterIndexHealths) {
+                        if (clusterIndexHealths.isTimedOut()) {
+
+                            // some of the new indices did not reach yellow state,
+                            // we cannot fulfil the primaries min_availability, so give up
+                            String errorMessages = Joiner.on('\n').join(clusterIndexHealths.getAllValidationFailures());
+                            logger.trace("Some indices did not reach yellow state: {}", errorMessages);
+                            cancelWithExceptionIfPresent(
+                                    new DeallocationFailedException(
+                                            String.format(Locale.ENGLISH,
+                                                    "Some indices did not reach yellow state:\\n%s",
+                                                    errorMessages
+                                                    )
+                                    )
+                            );
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Throwable e) {
+                        logger.error("error waiting for yellow status on new indices", e);
+                        cancelWithExceptionIfPresent(e);
+                    }
+                });
+                // exclude localNode from new indices
                 excludeNodeFromIndices(newIndices, new ActionListener<UpdateSettingsResponse>() {
                     @Override
                     public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
