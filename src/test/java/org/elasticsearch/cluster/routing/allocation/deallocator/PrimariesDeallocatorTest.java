@@ -209,7 +209,12 @@ public class PrimariesDeallocatorTest extends DeallocatorTest {
         assertThat(deallocator.cancel(), is(true));
         ensureGreen();
 
-        assertThat(clusterService().state().metaData().index("t0").settings().get(PrimariesDeallocator.EXCLUDE_NODE_ID_FROM_INDEX), is("abc"));
+        waitFor(new Predicate<Void>() {
+            @Override
+            public boolean apply(Void input) {
+                return clusterService().state().metaData().index("t0").settings().get(PrimariesDeallocator.EXCLUDE_NODE_ID_FROM_INDEX).equals("abc");
+            }
+        }, 10000);
 
     }
 
