@@ -20,7 +20,6 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
-import com.google.common.base.Joiner;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -30,6 +29,7 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsRequest;
 import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsResponse;
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
+import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.cluster.ClusterChangedEvent;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
@@ -41,74 +41,31 @@ import org.elasticsearch.cluster.routing.ShardRoutingState;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
-public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
-
-    public static final String CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID = "cluster.routing.allocation.exclude._id";
-
-    static final Joiner COMMA_JOINER = Joiner.on(',');
-
-    private final ESLogger logger = Loggers.getLogger(getClass());
-    private final TransportClusterUpdateSettingsAction clusterUpdateSettingsAction;
-    private final ClusterService clusterService;
-
+public class AllShardsDeallocator extends AbstractDeallocator implements ClusterStateListener {
     private final Object futureLock = new Object();
     private final Object excludeNodesLock = new Object();
 
-    private String localNodeId;
     private volatile Set<String> deallocatingNodes;
     private volatile SettableFuture<DeallocationResult> waitForFullDeallocation = null;
 
-    private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
 
     @Inject
-    public AllShardsDeallocator(ClusterService clusterService, TransportClusterUpdateSettingsAction clusterUpdateSettingsAction) {
-        this.clusterService = clusterService;
-        this.clusterUpdateSettingsAction = clusterUpdateSettingsAction;
+    public AllShardsDeallocator(ClusterService clusterService,
+                                TransportUpdateSettingsAction indicesUpdateSettingsAction,
+                                TransportClusterUpdateSettingsAction clusterUpdateSettingsAction) {
+        super(clusterService, indicesUpdateSettingsAction, clusterUpdateSettingsAction);
         this.deallocatingNodes = Sets.newConcurrentHashSet();
         this.clusterService.add(this);
     }
 
-    public String localNodeId() {
-        if (localNodeId == null) {
-            localNodeId = clusterService.localNode().id();
-        }
-        return localNodeId;
-    }
 
-    private void setAllocationEnableSetting(final String value, boolean async) {
-        ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
-        request.transientSettings(ImmutableSettings.builder().put(
-                EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                value));
 
-        if (async) {
-            clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
-                @Override
-                public void onResponse(ClusterUpdateSettingsResponse response) {
-                    logger.trace("[{}] setting '{}' successfully set to {}", localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
-                }
 
-                @Override
-                public void onFailure(Throwable e) {
-                    logger.debug("[{}] error setting '{}'", e, localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
-                }
-            });
-        } else {
-            clusterUpdateSettingsAction.execute(request).actionGet();
-        }
-    }
-
-     private void resetAllocationEnableSetting() {
-         setAllocationEnableSetting(allocationEnableSetting.get(), true); // avoid deadlock
-     }
 
     /**
      * @see Deallocator
@@ -132,7 +89,7 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
                         EnableAllocationDecider.Allocation.ALL.name().toLowerCase()));
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase(), false);
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase());
 
         final SettableFuture<DeallocationResult> future = waitForFullDeallocation = SettableFuture.create();
         Futures.addCallback(future, new FutureCallback<DeallocationResult>() {
@@ -153,21 +110,20 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
                     .put(CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID, COMMA_JOINER.join(deallocatingNodes))
                     .build());
         }
-        clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
-            @Override
-            public void onResponse(ClusterUpdateSettingsResponse response) {
-                logExcludedNodes(response.getTransientSettings());
-                // future will be set when node has no shards
-            }
+        clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction,
+                new ActionListener<ClusterUpdateSettingsResponse>() {
+                    @Override
+                    public void onResponse(ClusterUpdateSettingsResponse response) {
+                        logExcludedNodes(response.getTransientSettings());
+                        // future will be set when node has no shards
+                    }
 
-            @Override
-            public void onFailure(Throwable e) {
-                logger.error("[{}] error disabling allocation", e, localNodeId());
-                cancelWithExceptionIfPresent(e);
-            }
-        });
-
-
+                    @Override
+                    public void onFailure(Throwable e) {
+                        logger.error("[{}] error disabling allocation", e, localNodeId());
+                        cancelWithExceptionIfPresent(e);
+                    }
+                });
         return future;
     }
 
@@ -297,17 +253,18 @@ public class AllShardsDeallocator implements Deallocator, ClusterStateListener {
                 request.transientSettings(ImmutableSettings.builder()
                         .put(CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID, COMMA_JOINER.join(deallocatingNodes))
                         .build());
-                clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
-                    @Override
-                    public void onResponse(ClusterUpdateSettingsResponse response) {
-                        logExcludedNodes(response.getTransientSettings());
-                    }
+                clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction,
+                        new ActionListener<ClusterUpdateSettingsResponse>() {
+                            @Override
+                            public void onResponse(ClusterUpdateSettingsResponse response) {
+                                logExcludedNodes(response.getTransientSettings());
+                            }
 
-                    @Override
-                    public void onFailure(Throwable e) {
-                        logger.error("[{}] error removing node '{}' from exclusion list", localNodeId(), nodeId, e);
-                    }
-                });
+                            @Override
+                            public void onFailure(Throwable e) {
+                                logger.error("[{}] error removing node '{}' from exclusion list", localNodeId(), nodeId, e);
+                            }
+                        });
             }
             return removed;
         }

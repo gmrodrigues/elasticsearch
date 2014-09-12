@@ -20,17 +20,13 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
-import com.google.common.base.Joiner;
 import com.google.common.base.Objects;
-import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsRequest;
-import org.elasticsearch.action.admin.cluster.settings.ClusterUpdateSettingsResponse;
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -45,7 +41,6 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RoutingNode;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
-import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
@@ -62,16 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * that has shards on this node.
  * This will move the primary shards on this node to another but leaves everything else as is.
  */
-public class PrimariesDeallocator extends AbstractComponent implements Deallocator, ClusterStateListener {
-
-    static final String EXCLUDE_NODE_ID_FROM_INDEX = "index.routing.allocation.exclude._id";
-    static final Joiner COMMA_JOINER = Joiner.on(',');
-    static final Splitter COMMA_SPLITTER = Splitter.on(',');
-
-    private final ClusterService clusterService;
-    private final TransportUpdateSettingsAction indicesUpdateSettingsAction;
-    private final TransportClusterUpdateSettingsAction clusterUpdateSettingsAction;
-    private String localNodeId;
+public class PrimariesDeallocator extends AbstractDeallocator implements ClusterStateListener {
 
     private final Object localNodeFutureLock = new Object();
     private volatile SettableFuture<DeallocationResult> localNodeFuture;
@@ -82,24 +68,20 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
 
     private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
 
+
+
+
+
     @Inject
     public PrimariesDeallocator(ClusterService clusterService,
                                 TransportClusterUpdateSettingsAction clusterUpdateSettingsAction,
                                 TransportUpdateSettingsAction indicesUpdateSettingsAction) {
-        super(ImmutableSettings.EMPTY);
-        this.clusterService = clusterService;
-        this.clusterUpdateSettingsAction = clusterUpdateSettingsAction;
-        this.indicesUpdateSettingsAction = indicesUpdateSettingsAction;
+        super(clusterService, indicesUpdateSettingsAction, clusterUpdateSettingsAction);
         this.deallocatingIndices = new ConcurrentHashMap<>();
         this.clusterService.add(this);
     }
 
-    public String localNodeId() {
-        if (localNodeId == null) {
-            localNodeId = clusterService.localNode().id();
-        }
-        return localNodeId;
-    }
+
 
     /**
      * return a set with all the indices that have zero replicas
@@ -151,35 +133,6 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
         return newLocalIndices;
     }
 
-    private void setAllocationEnableSetting(final String value, boolean async) {
-        ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
-        request.transientSettings(ImmutableSettings.builder().put(
-                EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                value));
-
-        if (async) {
-            clusterUpdateSettingsAction.execute(request, new ActionListener<ClusterUpdateSettingsResponse>() {
-                @Override
-                public void onResponse(ClusterUpdateSettingsResponse response) {
-                    logger.trace("[{}] setting '{}' successfully set to {}",
-                            localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
-                }
-
-                @Override
-                public void onFailure(Throwable e) {
-                    logger.debug("[{}] error setting '{}'", e,
-                            localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
-                }
-            });
-        } else {
-            clusterUpdateSettingsAction.execute(request).actionGet();
-        }
-    }
-
-    private void resetAllocationEnableSetting() {
-        setAllocationEnableSetting(allocationEnableSetting.get(), true); // avoid deadlock
-    }
-
     @Override
     public ListenableFuture<DeallocationResult> deallocate() {
         if (isDeallocating()) {
@@ -204,7 +157,7 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                 clusterService.state().metaData().settings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
                         EnableAllocationDecider.Allocation.ALL.name().toLowerCase())); // global default
-        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(), false);
+        setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase());
 
         synchronized (localNodeFutureLock) {
             localNodeFuture = SettableFuture.create();
@@ -263,8 +216,8 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
             }
 
         }
-        for (final UpdateSettingsRequest request : settingsRequests) {
-            indicesUpdateSettingsAction.execute(request, listener);
+        if (settingsRequests.length > 0) {
+            clusterChangeExecutor.enqueue(settingsRequests, updateSettingsAction, listener);
         }
     }
 
@@ -319,22 +272,25 @@ public class PrimariesDeallocator extends AbstractComponent implements Deallocat
                 }
             }
             if (!changed.isEmpty()) {
+                UpdateSettingsRequest[] requests = new UpdateSettingsRequest[changed.size()];
+                int i = 0;
                 for (final String index : changed) {
                     Settings settings = ImmutableSettings.builder().put(EXCLUDE_NODE_ID_FROM_INDEX,
                             COMMA_JOINER.join(Objects.firstNonNull(deallocatingIndices.get(index), Collections.EMPTY_SET))).build();
-                    UpdateSettingsRequest request = new UpdateSettingsRequest(settings, index);
-                    indicesUpdateSettingsAction.execute(request, new ActionListener<UpdateSettingsResponse>() {
-                        @Override
-                        public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
-                            logger.trace("[{}] updated settings for index '{}'", nodeId, index);
-                        }
+                    requests[i++] = new UpdateSettingsRequest(settings, index);
 
-                        @Override
-                        public void onFailure(Throwable e) {
-                            logger.error("[{}] error removing exclusion for node {} on index '{}'", e, nodeId, nodeId, index);
-                        }
-                    });
                 }
+                clusterChangeExecutor.enqueue(requests,updateSettingsAction, new ActionListener<UpdateSettingsResponse>() {
+                    @Override
+                    public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
+                        logger.trace("[{}] excluded node {} from some index", localNodeId(), nodeId);
+                    }
+
+                    @Override
+                    public void onFailure(Throwable e) {
+                        logger.error("[{}] error removing exclusion for node {}", e, localNodeId(), nodeId);
+                    }
+                });
                 return true;
             }
         }
