@@ -21,16 +21,14 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.base.Objects;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
-import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
-import org.elasticsearch.action.admin.cluster.health.ClusterIndexHealth;
-import org.elasticsearch.action.admin.cluster.health.TransportClusterHealthAction;
+import org.elasticsearch.action.admin.cluster.health.*;
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -49,6 +47,7 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.indices.IndexMissingException;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -370,29 +369,30 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 newIndices.addAll(createdIndices);
                 // wait for indices to become available first
                 ClusterHealthRequest request = new ClusterHealthRequest(newIndices.toArray(new String[newIndices.size()]));
-                request.waitForYellowStatus();
                 request.timeout(new TimeValue(60 * 1000)); // wait 60 seconds max
+                request.waitForYellowStatus();
                 clusterChangeExecutor.enqueue(request, transportClusterHealthAction, new ActionListener<ClusterHealthResponse>() {
                     @Override
                     public void onResponse(ClusterHealthResponse clusterIndexHealths) {
                         if (clusterIndexHealths.isTimedOut()) {
-
                             // some of the new indices did not reach yellow state,
-                            // we cannot fulfil the primaries min_availability, so give up
+                            // if so, we cannot fulfil the primaries min_availability, so give up
                             for (Map.Entry<String, ClusterIndexHealth> entry : clusterIndexHealths.getIndices().entrySet()) {
-                                logger.trace("Index {} did not reach yellow state: {}. reasons: {}",
-                                        entry.getKey(),
-                                        entry.getValue().getStatus().name(),
-                                        COMMA_JOINER.join(entry.getValue().getValidationFailures()));
-                            }
-                            cancelWithExceptionIfPresent(
-                                    new DeallocationFailedException(
-                                            String.format(Locale.ENGLISH,
-                                                    "Indices %s did not reach yellow state",
-                                                    COMMA_JOINER.join(clusterIndexHealths.getIndices().keySet())
+                                if (entry.getValue().getStatus().equals(ClusterHealthStatus.RED)) {
+                                    logger.trace("Index '{}' did not reach yellow state: {}.",
+                                            entry.getKey(),
+                                            entry.getValue().getStatus().name());
+                                    cancelWithExceptionIfPresent(
+                                            new DeallocationFailedException(
+                                                    String.format(Locale.ENGLISH,
+                                                            "Index '%s' did not reach yellow state",
+                                                            entry.getKey()
                                                     )
-                                    )
-                            );
+                                            )
+                                    );
+                                }
+                            }
+
                         }
                     }
 
@@ -404,6 +404,8 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 });
                 // exclude localNode from new indices
                 excludeNodeFromIndices(newIndices, new ActionListener<UpdateSettingsResponse>() {
+                    private int retryCounter = 0;
+
                     @Override
                     public void onResponse(UpdateSettingsResponse updateSettingsResponse) {
                         logger.trace("successfully updated index settings for new index");
@@ -412,8 +414,15 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
 
                     @Override
                     public void onFailure(Throwable e) {
-                        logger.error("error updating index settings for new index", e);
-                        cancelWithExceptionIfPresent(e);
+                        retryCounter++;
+                        if (e instanceof IndexMissingException && retryCounter < 3) {
+                            String index = ((IndexMissingException) e).index().name();
+                            // retry
+                            excludeNodeFromIndices(ImmutableSet.of(index), this);
+                        } else {
+                            logger.error("error updating index settings for new index", e);
+                            cancelWithExceptionIfPresent(e);
+                        }
                     }
                 });
             }
