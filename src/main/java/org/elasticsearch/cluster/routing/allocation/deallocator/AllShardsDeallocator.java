@@ -64,10 +64,6 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         this.clusterService.add(this);
     }
 
-
-
-
-
     /**
      * @see Deallocator
      *
@@ -79,8 +75,7 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         if (isDeallocating()) {
             throw new IllegalStateException("node already waiting for complete deallocation");
         }
-        logger.debug("[{}] deallocating node ...", localNodeId());
-
+        logger.info("[{}] starting full deallocation...", localNodeId());
         if (node.size() == 0) {
             return Futures.immediateFuture(DeallocationResult.SUCCESS_NOTHING_HAPPENED);
         }
@@ -132,6 +127,7 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         synchronized (futureLock) {
             SettableFuture<DeallocationResult> future = waitForFullDeallocation;
             if (future != null) {
+                logger.error("[{}] full deallocation cancelled due to an error", e, localNodeId());
                 future.setException(e);
                 waitForFullDeallocation = null;
             }
@@ -228,7 +224,7 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
             if (future != null) {
                 RoutingNode node = event.state().routingNodes().node(localNodeId());
                 if (node.numberOfShardsWithState(ShardRoutingState.STARTED, ShardRoutingState.INITIALIZING, ShardRoutingState.RELOCATING) == 0) {
-                    logger.debug("[{}] deallocation successful.", localNodeId());
+                    logger.info("[{}] deallocation successful.", localNodeId());
                     waitForFullDeallocation = null;
                     future.set(DeallocationResult.SUCCESS);
                 } else if (logger.isTraceEnabled()) {
