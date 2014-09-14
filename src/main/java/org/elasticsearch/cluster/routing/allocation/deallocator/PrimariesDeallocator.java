@@ -231,6 +231,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         synchronized (localNodeFutureLock) {
             SettableFuture<DeallocationResult> future = localNodeFuture;
             if (future != null) {
+                logger.error("[{}] primaries deallocation cancelled due to an error", e, localNodeId());
                 future.setException(e);
                 localNodeFuture = null;
                 result = true;
