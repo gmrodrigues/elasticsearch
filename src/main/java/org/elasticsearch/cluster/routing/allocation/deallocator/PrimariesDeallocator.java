@@ -20,7 +20,6 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
-import com.google.common.base.Joiner;
 import com.google.common.base.Objects;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.FutureCallback;
@@ -30,6 +29,7 @@ import com.google.common.util.concurrent.SettableFuture;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.elasticsearch.action.admin.cluster.health.ClusterIndexHealth;
 import org.elasticsearch.action.admin.cluster.health.TransportClusterHealthAction;
 import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
@@ -379,13 +379,17 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
 
                             // some of the new indices did not reach yellow state,
                             // we cannot fulfil the primaries min_availability, so give up
-                            String errorMessages = Joiner.on('\n').join(clusterIndexHealths.getAllValidationFailures());
-                            logger.trace("Some indices did not reach yellow state: {}", errorMessages);
+                            for (Map.Entry<String, ClusterIndexHealth> entry : clusterIndexHealths.getIndices().entrySet()) {
+                                logger.trace("Index {} did not reach yellow state: {}. reasons: {}",
+                                        entry.getKey(),
+                                        entry.getValue().getStatus().name(),
+                                        COMMA_JOINER.join(entry.getValue().getValidationFailures()));
+                            }
                             cancelWithExceptionIfPresent(
                                     new DeallocationFailedException(
                                             String.format(Locale.ENGLISH,
-                                                    "Some indices did not reach yellow state:\\n%s",
-                                                    errorMessages
+                                                    "Indices %s did not reach yellow state",
+                                                    COMMA_JOINER.join(clusterIndexHealths.getIndices().keySet())
                                                     )
                                     )
                             );
