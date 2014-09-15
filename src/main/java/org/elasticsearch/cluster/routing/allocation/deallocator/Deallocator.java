@@ -51,7 +51,7 @@ public interface Deallocator {
     }
 
     /**
- * asynchronously deallocate shard of the local node
+     * asynchronously deallocate shard of the local node
      *
      */
     public ListenableFuture<DeallocationResult> deallocate();
