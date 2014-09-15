@@ -158,10 +158,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         final Set<String> zeroReplicaIndices = zeroReplicaIndices(clusterMetaData);
         
         // enable PRIMARIES allocation to make sure shards are moved, keep the old value
-        allocationEnableSetting.set(
-                clusterService.state().metaData().settings().get(
-                        EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
-                        EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH))); // global default
+        trackAllocationEnableSetting();
         setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(Locale.ENGLISH));
 
         SettableFuture<DeallocationResult> future;
@@ -227,10 +224,10 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 clusterService.add(new ClusterStateListener() {
                     @Override
                     public void clusterChanged(ClusterChangedEvent event) {
+                        String enableSetting = event.state().metaData().settings()
+                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
                         if (event.metaDataChanged()
-                                && event.state().metaData().settings()
-                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE)
-                                .equals(allocationEnableSetting.get())) {
+                                && (enableSetting == null || enableSetting.equals(allocationEnableSetting.get()))) {
                             future.setException(e);
                             clusterService.remove(this);
                         }
@@ -256,10 +253,10 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 clusterService.add(new ClusterStateListener() {
                     @Override
                     public void clusterChanged(ClusterChangedEvent event) {
+                        String enableSetting = event.state().metaData().settings()
+                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
                         if (event.metaDataChanged()
-                                && event.state().metaData().settings()
-                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE)
-                                .equals(allocationEnableSetting.get())) {
+                                && (enableSetting == null || enableSetting.equals(allocationEnableSetting.get()))) {
                             resetSettingFuture.set(null);
                             clusterService.remove(this);
                         }
@@ -268,7 +265,8 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 try {
                     resetSettingFuture.get(10, TimeUnit.SECONDS);
                 } catch (InterruptedException | TimeoutException | ExecutionException e) {
-                    // proceed, what can we do?
+                    logger.error("error waiting for reset of {} setting", e, EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
+                    // proceed
                 }
                 future.cancel(true);
                 localNodeFuture = null;
@@ -371,9 +369,9 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
             synchronized (deallocatingIndicesLock) {
                 // update deallocating nodes from new cluster state
                 for (ObjectObjectCursor<String, IndexMetaData> entry : event.state().metaData().indices()) {
-                    String excludeNodesSetting = entry.value.settings().get(EXCLUDE_NODE_ID_FROM_INDEX);
-                    if (excludeNodesSetting != null) {
-                        List<String> excludeNodes = COMMA_SPLITTER.splitToList(excludeNodesSetting);
+                    String[] excludeNodesSetting = entry.value.settings().getAsArray(EXCLUDE_NODE_ID_FROM_INDEX, EMPTY_STRING_ARRAY, true);
+                    if (excludeNodesSetting.length > 0) {
+                        List<String> excludeNodes = Arrays.asList(excludeNodesSetting);
                         if (!excludeNodes.isEmpty()) {
                             deallocatingIndices.put(entry.key, Sets.newHashSet(excludeNodes));
                         }
@@ -385,11 +383,11 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
             }
 
             synchronized (localNodeFutureLock) {
+                String enableSetting = event.state().metaData().settings()
+                        .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
                 if (localNodeFuture != null
                         && waitForResetSetting.get()
-                        && event.state().metaData().settings()
-                            .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "")
-                            .equalsIgnoreCase(allocationEnableSetting.get())) {
+                        && (enableSetting == null || enableSetting.equalsIgnoreCase(allocationEnableSetting.get()))) {
                     // setting was reset, finally done
                     logger.info("[{}] primaries deallocation successful", localNodeId());
                     localNodeFuture.set(DeallocationResult.SUCCESS);

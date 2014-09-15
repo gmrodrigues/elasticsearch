@@ -147,7 +147,6 @@ public class AllShardsDeallocatorTest extends DeallocatorTest {
             @Override
             public boolean apply(Void aVoid) {
                 ClusterState newState = ((InternalTestCluster)cluster()).getInstance(ClusterService.class, takeDownNode.name()).state();
-
                 return newState.metaData().settings().get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "").equals(EnableAllocationDecider.Allocation.NONE.name());
             }
         }, 100);
