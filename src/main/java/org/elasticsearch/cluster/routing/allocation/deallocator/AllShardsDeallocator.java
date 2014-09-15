@@ -21,7 +21,6 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -46,6 +45,7 @@ import org.elasticsearch.common.settings.Settings;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AllShardsDeallocator extends AbstractDeallocator implements ClusterStateListener {
     private final Object futureLock = new Object();
@@ -53,6 +53,7 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
 
     private volatile Set<String> deallocatingNodes;
     private volatile SettableFuture<DeallocationResult> waitForFullDeallocation = null;
+    private final AtomicBoolean waitForResetSetting = new AtomicBoolean(false);
 
 
     @Inject
@@ -88,17 +89,6 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         setAllocationEnableSetting(EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH));
 
         final SettableFuture<DeallocationResult> future = waitForFullDeallocation = SettableFuture.create();
-        Futures.addCallback(future, new FutureCallback<DeallocationResult>() {
-            @Override
-            public void onSuccess(DeallocationResult result) {
-                resetAllocationEnableSetting();
-            }
-
-            @Override
-            public void onFailure(Throwable throwable) {
-                resetAllocationEnableSetting();
-            }
-        });
         ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
         synchronized (excludeNodesLock) {
             deallocatingNodes.add(localNodeId());
@@ -123,12 +113,24 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         return future;
     }
 
-    private void cancelWithExceptionIfPresent(Throwable e) {
+    private void cancelWithExceptionIfPresent(final Throwable e) {
         synchronized (futureLock) {
-            SettableFuture<DeallocationResult> future = waitForFullDeallocation;
+            final SettableFuture<DeallocationResult> future = waitForFullDeallocation;
             if (future != null) {
                 logger.error("[{}] full deallocation cancelled due to an error", e, localNodeId());
-                future.setException(e);
+                resetAllocationEnableSetting();
+                clusterService.add(new ClusterStateListener() {
+                    @Override
+                    public void clusterChanged(ClusterChangedEvent event) {
+                        if (event.metaDataChanged()
+                                && event.state().metaData().settings()
+                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE)
+                                .equals(allocationEnableSetting.get())) {
+                            future.setException(e);
+                            clusterService.remove(this);
+                        }
+                    }
+                });
                 waitForFullDeallocation = null;
             }
         }
@@ -138,6 +140,7 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
         synchronized (futureLock) {
             SettableFuture<DeallocationResult> future = waitForFullDeallocation;
             if (future != null) {
+                resetAllocationEnableSetting();
                 future.cancel(true);
                 waitForFullDeallocation = null;
             }
@@ -207,6 +210,18 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
             synchronized (excludeNodesLock) {
                 deallocatingNodes = Strings.splitStringByCommaToSet(settings.get(CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID, ""));
             }
+            synchronized (futureLock) {
+                SettableFuture<DeallocationResult> future = waitForFullDeallocation;
+                if (future != null
+                        && waitForResetSetting.get()
+                        && event.state().metaData().settings()
+                        .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "")
+                        .equalsIgnoreCase(allocationEnableSetting.get())) {
+                    logger.info("[{}] deallocation successful.", localNodeId());
+                    waitForFullDeallocation = null;
+                    future.set(DeallocationResult.SUCCESS);
+                }
+            }
         }
 
         // remove removed nodes from deallocatingNodes list if we are master
@@ -218,24 +233,24 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
             }
         }
 
-        // set future for fully deallocated local node
-        synchronized (futureLock) {
-            SettableFuture<DeallocationResult> future = waitForFullDeallocation;
-            if (future != null) {
-                RoutingNode node = event.state().routingNodes().node(localNodeId());
-                if (node.numberOfShardsWithState(ShardRoutingState.STARTED, ShardRoutingState.INITIALIZING, ShardRoutingState.RELOCATING) == 0) {
-                    logger.info("[{}] deallocation successful.", localNodeId());
-                    waitForFullDeallocation = null;
-                    future.set(DeallocationResult.SUCCESS);
-                } else if (logger.isTraceEnabled()) {
-                    logger.trace("[{}] still {} started, {} initializing and {} relocating shards remaining",
-                            localNodeId(),
-                            node.numberOfShardsWithState(ShardRoutingState.STARTED),
-                            node.numberOfShardsWithState(ShardRoutingState.INITIALIZING),
-                            node.numberOfShardsWithState(ShardRoutingState.RELOCATING));
+        // check for successful deallocation
+        if (waitForFullDeallocation != null) {
+            RoutingNode node = event.state().routingNodes().node(localNodeId());
+            if (node.numberOfShardsWithState(ShardRoutingState.STARTED, ShardRoutingState.INITIALIZING, ShardRoutingState.RELOCATING) == 0) {
+                // wait for reset settings and then succeed, see above
+                if (!waitForResetSetting.get()) {
+                    resetAllocationEnableSetting();
+                    waitForResetSetting.set(true);
                 }
+            } else if (logger.isTraceEnabled()) {
+                logger.trace("[{}] still {} started, {} initializing and {} relocating shards remaining",
+                        localNodeId(),
+                        node.numberOfShardsWithState(ShardRoutingState.STARTED),
+                        node.numberOfShardsWithState(ShardRoutingState.INITIALIZING),
+                        node.numberOfShardsWithState(ShardRoutingState.RELOCATING));
             }
         }
+
     }
 
     /**
