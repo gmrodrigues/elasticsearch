@@ -112,6 +112,10 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 }
             });
         }
+
+
+
+
     }
 
     protected final ClusterChangeExecutor clusterChangeExecutor;
@@ -162,6 +166,8 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
         clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction, listener);
     }
     protected void resetAllocationEnableSetting() {
-        setAllocationEnableSetting(allocationEnableSetting.get());
+        String resetValue = allocationEnableSetting.get();
+        logger.trace("reset allocation.enable to '{}'", resetValue);
+        setAllocationEnableSetting(resetValue);
     }
 }

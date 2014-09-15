@@ -71,7 +71,6 @@ public class DeallocatorTest extends ElasticsearchIntegrationTest {
                 future.set(null);
             }
         });
-
         try {
             assertThat(future.get(timeOutMillis, TimeUnit.MILLISECONDS), is(nullValue()));
         } catch (InterruptedException|TimeoutException |ExecutionException e) {
