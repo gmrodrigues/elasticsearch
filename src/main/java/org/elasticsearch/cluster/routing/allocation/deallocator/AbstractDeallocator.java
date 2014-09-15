@@ -21,6 +21,7 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableSet;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
@@ -46,15 +47,17 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
     static final String CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID = "cluster.routing.allocation.exclude._id";
     static final Joiner COMMA_JOINER = Joiner.on(',');
     static final Splitter COMMA_SPLITTER = Splitter.on(',');
-    static final ActionListener<ClusterUpdateSettingsResponse> ALLOCATION_ENABLE_NOOP_LISTENER = new ActionListener<ClusterUpdateSettingsResponse>() {
+    static final String[] EMPTY_STRING_ARRAY = new String[0];
+
+    final ActionListener<ClusterUpdateSettingsResponse> resetListener =  new ActionListener<ClusterUpdateSettingsResponse>() {
         @Override
         public void onResponse(ClusterUpdateSettingsResponse response) {
-
+            logger.trace("[{}] setting '{}' successfully reset", localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
         }
 
         @Override
         public void onFailure(Throwable e) {
-
+            logger.error("[{}] error resetting '{}'", e, localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
         }
     };
 
@@ -112,17 +115,13 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 }
             });
         }
-
-
-
-
     }
 
     protected final ClusterChangeExecutor clusterChangeExecutor;
     protected final ClusterService clusterService;
     protected final TransportUpdateSettingsAction updateSettingsAction;
     protected final TransportClusterUpdateSettingsAction clusterUpdateSettingsAction;
-    protected final AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
+    protected final AtomicReference<String> allocationEnableSetting = new AtomicReference<>();
 
     private String localNodeId;
 
@@ -141,33 +140,41 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
         return localNodeId;
     }
 
+
     protected void setAllocationEnableSetting(final String value) {
         ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
         request.transientSettings(ImmutableSettings.builder().put(
                 EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE,
                 value));
+        clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction, new ActionListener<ClusterUpdateSettingsResponse>() {
+            @Override
+            public void onResponse(ClusterUpdateSettingsResponse response) {
+                logger.trace("[{}] setting '{}' successfully set to {}", localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
+            }
 
-        ActionListener<ClusterUpdateSettingsResponse> listener;
-        if (logger.isDebugEnabled()) {
-            listener = new ActionListener<ClusterUpdateSettingsResponse>() {
-                @Override
-                public void onResponse(ClusterUpdateSettingsResponse response) {
-                    logger.trace("[{}] setting '{}' successfully set to {}", localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, value);
-                }
-
-                @Override
-                public void onFailure(Throwable e) {
-                    logger.debug("[{}] error setting '{}'", e, localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
-                }
-            };
-        } else {
-            listener = ALLOCATION_ENABLE_NOOP_LISTENER;
-        }
-        clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction, listener);
+            @Override
+            public void onFailure(Throwable e) {
+                logger.error("[{}] error setting '{}'", e, localNodeId(), EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE);
+            }
+        });
     }
+
+    protected void trackAllocationEnableSetting() {
+        allocationEnableSetting.set(
+                clusterService.state().metaData().settings().get(
+                        EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE));
+    }
+
     protected void resetAllocationEnableSetting() {
         String resetValue = allocationEnableSetting.get();
-        logger.trace("reset allocation.enable to '{}'", resetValue);
-        setAllocationEnableSetting(resetValue);
+        logger.trace("reset allocation.enable to {}", resetValue);
+        if (resetValue != null) {
+            setAllocationEnableSetting(resetValue);
+        } else {
+            // use the new reset feature
+            ClusterUpdateSettingsRequest request = new ClusterUpdateSettingsRequest();
+            request.transientSettingsToRemove(ImmutableSet.of(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE));
+            clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction, resetListener);
+        }
     }
 }
