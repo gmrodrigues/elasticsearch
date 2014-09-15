@@ -72,6 +72,7 @@ public class PrimariesDeallocatorTest extends DeallocatorTest {
         cluster().client().admin().cluster().prepareUpdateSettings().setTransientSettings(
                 ImmutableSettings.builder().put(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, EnableAllocationDecider.Allocation.NONE.name())
         ).execute().actionGet();
+        Thread.sleep(100);
 
         PrimariesDeallocator deallocator = ((InternalTestCluster)cluster()).getInstance(PrimariesDeallocator.class, takeDownNode.name());
         ListenableFuture<Deallocator.DeallocationResult> future = deallocator.deallocate();
@@ -170,8 +171,6 @@ public class PrimariesDeallocatorTest extends DeallocatorTest {
                 return newState.metaData().settings().get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "").equals(EnableAllocationDecider.Allocation.NONE.name());
             }
         }, 100);
-
-
     }
 
     @Test
