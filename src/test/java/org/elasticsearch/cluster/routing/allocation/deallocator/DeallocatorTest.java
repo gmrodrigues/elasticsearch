@@ -42,7 +42,7 @@ import java.util.concurrent.TimeoutException;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
-public abstract class DeallocatorTest extends ElasticsearchIntegrationTest {
+public class DeallocatorTest extends ElasticsearchIntegrationTest {
 
     @Rule
     public ExpectedException expectedException = ExpectedException.none();

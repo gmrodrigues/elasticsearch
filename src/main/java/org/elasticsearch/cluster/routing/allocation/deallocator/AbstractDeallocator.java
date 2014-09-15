@@ -112,17 +112,6 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 }
             });
         }
-
-        public void stop() {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(2L, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.interrupted();
-            } finally {
-                executor.shutdownNow();
-            }
-        }
     }
 
     protected final ClusterChangeExecutor clusterChangeExecutor;
