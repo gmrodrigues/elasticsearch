@@ -31,6 +31,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -88,7 +89,7 @@ public class DeallocatorsTest extends ElasticsearchIntegrationTest{
         assertThat(result.success(), is(true));
         assertThat(result.didDeallocate(), is(true));
         ensureGreen(); // wait for clusterstate to propagate
-        assertThat(deallocators.isDeallocating(), is(false));
+        assertThat(deallocators.isDeallocating(), is(true)); // node not shut down yet, still seen as deallocating
     }
 
     @Test
@@ -137,7 +138,7 @@ public class DeallocatorsTest extends ElasticsearchIntegrationTest{
         ).execute().actionGet();
         assertThat(deallocators.isDeallocating(), is(false));
 
-        expectedException.expect(DeallocationCancelledException.class);
+        expectedException.expect(CancellationException.class);
         try {
             future.get(1, TimeUnit.SECONDS);
         } catch (ExecutionException e) {

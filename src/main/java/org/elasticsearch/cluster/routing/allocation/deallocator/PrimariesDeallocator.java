@@ -262,6 +262,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         } else {
             logger.debug("[{}] node not deallocating", localNodeId());
         }
+
         return cancelled;
     }
 
