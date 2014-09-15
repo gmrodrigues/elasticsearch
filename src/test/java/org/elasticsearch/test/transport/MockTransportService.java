@@ -213,8 +213,6 @@ public class MockTransportService extends TransportService {
             this.transport = transport;
         }
 
-
-
         @Override
         public void transportServiceAdapter(TransportServiceAdapter service) {
             transport.transportServiceAdapter(service);
@@ -278,6 +276,12 @@ public class MockTransportService extends TransportService {
         @Override
         public void removeLifecycleListener(LifecycleListener listener) {
             transport.removeLifecycleListener(listener);
+        }
+
+        @Override
+        public Transport disable() throws ElasticsearchException {
+            transport.disable();
+            return this;
         }
 
         @Override
