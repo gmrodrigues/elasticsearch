@@ -23,7 +23,6 @@ import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -51,7 +50,10 @@ import org.elasticsearch.indices.IndexMissingException;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * This deallocator only deallocates primary shards that have no replica.
@@ -71,8 +73,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
     private volatile Map<String, Set<String>> deallocatingIndices;
     private final Set<String> newIndices = Sets.newConcurrentHashSet();
 
-    private AtomicReference<String> allocationEnableSetting = new AtomicReference<>(EnableAllocationDecider.Allocation.ALL.name());
-
+    private final AtomicBoolean waitForResetSetting = new AtomicBoolean(false);
 
     @Inject
     public PrimariesDeallocator(ClusterService clusterService,
@@ -163,21 +164,9 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                         EnableAllocationDecider.Allocation.ALL.name().toLowerCase(Locale.ENGLISH))); // global default
         setAllocationEnableSetting(EnableAllocationDecider.Allocation.PRIMARIES.name().toLowerCase(Locale.ENGLISH));
 
+        SettableFuture<DeallocationResult> future;
         synchronized (localNodeFutureLock) {
-            localNodeFuture = SettableFuture.create();
-            Futures.addCallback(localNodeFuture, new FutureCallback<DeallocationResult>() {
-                @Override
-                public void onSuccess(DeallocationResult result) {
-                    resetAllocationEnableSetting();
-                    newIndices.clear();
-                }
-
-                @Override
-                public void onFailure(Throwable throwable) {
-                    resetAllocationEnableSetting();
-                    newIndices.clear();
-                }
-            });
+            localNodeFuture = future = SettableFuture.create();
         }
         excludeNodeFromIndices(zeroReplicaIndices, new ActionListener<UpdateSettingsResponse>() {
             @Override
@@ -192,7 +181,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 cancelWithExceptionIfPresent(e);
             }
         });
-        return localNodeFuture;
+        return future;
     }
 
     /**
@@ -226,14 +215,29 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         }
     }
 
-    private boolean cancelWithExceptionIfPresent(Throwable e) {
+    private boolean cancelWithExceptionIfPresent(final Throwable e) {
         boolean result = false;
         synchronized (localNodeFutureLock) {
-            SettableFuture<DeallocationResult> future = localNodeFuture;
+            final SettableFuture<DeallocationResult> future = localNodeFuture;
             if (future != null) {
                 logger.error("[{}] primaries deallocation cancelled due to an error", e, localNodeId());
-                future.setException(e);
+                // delay setting the exception on the future
+                // until the allocation.enable setting is reset
+                resetAllocationEnableSetting();
+                clusterService.add(new ClusterStateListener() {
+                    @Override
+                    public void clusterChanged(ClusterChangedEvent event) {
+                        if (event.metaDataChanged()
+                                && event.state().metaData().settings()
+                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE)
+                                .equals(allocationEnableSetting.get())) {
+                            future.setException(e);
+                            clusterService.remove(this);
+                        }
+                    }
+                });
                 localNodeFuture = null;
+                newIndices.clear();
                 result = true;
             }
         }
@@ -245,8 +249,30 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
         synchronized (localNodeFutureLock) {
             SettableFuture<DeallocationResult> future = localNodeFuture;
             if (future != null) {
+                // reset setting and
+                // synchronously wait until the allocation.enable setting is reset
+                resetAllocationEnableSetting();
+                final SettableFuture<Void> resetSettingFuture = SettableFuture.create();
+                clusterService.add(new ClusterStateListener() {
+                    @Override
+                    public void clusterChanged(ClusterChangedEvent event) {
+                        if (event.metaDataChanged()
+                                && event.state().metaData().settings()
+                                .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE)
+                                .equals(allocationEnableSetting.get())) {
+                            resetSettingFuture.set(null);
+                            clusterService.remove(this);
+                        }
+                    }
+                });
+                try {
+                    resetSettingFuture.get(10, TimeUnit.SECONDS);
+                } catch (InterruptedException | TimeoutException | ExecutionException e) {
+                    // proceed, what can we do?
+                }
                 future.cancel(true);
                 localNodeFuture = null;
+                newIndices.clear();
                 result = true;
             }
         }
@@ -357,6 +383,20 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                     logger.trace("new deallocating indices: {}", COMMA_JOINER.withKeyValueSeparator(":").join(deallocatingIndices));
                 }
             }
+
+            synchronized (localNodeFutureLock) {
+                if (localNodeFuture != null
+                        && waitForResetSetting.get()
+                        && event.state().metaData().settings()
+                            .get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE, "")
+                            .equalsIgnoreCase(allocationEnableSetting.get())) {
+                    // setting was reset, finally done
+                    logger.info("[{}] primaries deallocation successful", localNodeId());
+                    localNodeFuture.set(DeallocationResult.SUCCESS);
+                    localNodeFuture = null;
+                    newIndices.clear();
+                }
+            }
         }
 
         // exclusive master operation
@@ -432,22 +472,23 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
 
         synchronized (localNodeFutureLock) {
             if (localNodeFuture != null) {
-
                 RoutingNode node = event.state().routingNodes().node(localNodeId());
                 MetaData clusterMetaData = event.state().metaData();
                 Set<String> localZeroReplicaIndices = localZeroReplicaIndices(node, clusterMetaData);
                 Set<String> localNewIndices = localNewIndices(node, clusterMetaData);
 
                 if (localZeroReplicaIndices.isEmpty() && localNewIndices.isEmpty()) {
-                    logger.info("[{}] primaries deallocation successful", localNodeId());
-                    localNodeFuture.set(DeallocationResult.SUCCESS);
-                    localNodeFuture = null;
-                    newIndices.clear();
+                    // wait until cluster setting routing.allocation.enable is reset, then succeed
+                    if (!waitForResetSetting.get()) {
+                        resetAllocationEnableSetting();
+                        waitForResetSetting.set(true);
+                    }
                 } else {
                     logger.trace("[{}] zero replica primaries left for indices: {}", localNodeId(), COMMA_JOINER.join(localZeroReplicaIndices));
                 }
             }
         }
+
     }
 
     /**

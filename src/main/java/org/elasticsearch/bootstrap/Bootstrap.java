@@ -87,14 +87,14 @@ public class Bootstrap {
                 }
             });
         } catch (IllegalArgumentException e) {
-            logger.info("SIGUSR2 signal not supported on {}.", System.getProperty("os.name"));
+            logger.warn("SIGUSR2 signal not supported on {}.", System.getProperty("os.name"));
         }
 
         if (addShutdownHook) {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
                 public void run() {
-                     node.close();
+                    node.close();
                 }
             });
         }
