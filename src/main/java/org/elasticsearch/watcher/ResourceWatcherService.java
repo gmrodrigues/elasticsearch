@@ -72,7 +72,9 @@ public class ResourceWatcherService extends AbstractLifecycleComponent<ResourceW
         if (!enabled) {
             return;
         }
-        scheduledFuture.cancel(true);
+        if (scheduledFuture != null) {
+            scheduledFuture.cancel(true);
+        }
     }
 
     @Override
