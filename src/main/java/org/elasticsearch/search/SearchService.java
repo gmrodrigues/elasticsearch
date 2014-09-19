@@ -22,6 +22,7 @@
 package org.elasticsearch.search;
 
 import org.elasticsearch.ElasticsearchException;
+import org.elasticsearch.common.inject.ImplementedBy;
 import org.elasticsearch.search.dfs.DfsSearchResult;
 import org.elasticsearch.search.fetch.FetchSearchRequest;
 import org.elasticsearch.search.fetch.FetchSearchResult;
@@ -33,6 +34,7 @@ import org.elasticsearch.search.query.QuerySearchRequest;
 import org.elasticsearch.search.query.QuerySearchResult;
 import org.elasticsearch.search.query.ScrollQuerySearchResult;
 
+@ImplementedBy(InternalSearchService.class)
 public interface SearchService {
     DfsSearchResult executeDfsPhase(ShardSearchRequest request) throws ElasticsearchException;
 

@@ -65,11 +65,13 @@ public class RiverClusterService extends AbstractLifecycleComponent<RiverCluster
 
     @Override
     protected void doStop() throws ElasticsearchException {
-        updateTasksExecutor.shutdown();
-        try {
-            updateTasksExecutor.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            // ignore
+        if (updateTasksExecutor != null) {
+            updateTasksExecutor.shutdown();
+            try {
+                updateTasksExecutor.awaitTermination(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                // ignore
+            }
         }
     }
 
