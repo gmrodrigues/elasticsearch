@@ -19,33 +19,27 @@
 
 package org.elasticsearch.node.internal;
 
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
+import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.common.settings.ImmutableSettings;
-import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
-import org.elasticsearch.http.HttpServerTransport;
 import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.test.ElasticsearchTestCase;
-import org.elasticsearch.test.rest.client.http.HttpRequestBuilder;
-import org.elasticsearch.test.rest.client.http.HttpResponse;
 import org.junit.Test;
 
-import java.net.InetSocketAddress;
-
-import static org.hamcrest.core.Is.is;
-
-public class NodeDisableTest extends ElasticsearchTestCase {
+public class NodeStartStopTest extends ElasticsearchTestCase {
 
     static {
         ClassLoader.getSystemClassLoader().setDefaultAssertionStatus(true);
     }
 
+    @Repeat(iterations = 10)
     @Test
-    public void testHttpDisableAndReEnable() throws Exception {
-        InternalNode node = (InternalNode)NodeBuilder.nodeBuilder().local(true).data(true).settings(
+    public void testFastStartAndStop() throws Exception {
+        // assert that no exception is thrown when starting and stopping the
+        // internal node in parallel etc.
+        final InternalNode node = (InternalNode) NodeBuilder.nodeBuilder().local(true).data(true).settings(
                 ImmutableSettings.builder()
                         .put(ClusterName.SETTING, getClass().getName())
                         .put("node.name", getClass().getName())
@@ -56,33 +50,17 @@ public class NodeDisableTest extends ElasticsearchTestCase {
                         .put("index.store.type", "ram")
                         .put("config.ignore_system_properties", true)
                         .put("gateway.type", "none")).build();
-        node.start();
-        HttpServerTransport httpServerTransport = node.injector().getInstance(HttpServerTransport.class);
-        InetSocketAddress address = ((InetSocketTransportAddress) httpServerTransport.boundAddress().publishAddress()).address();
-
-        CloseableHttpClient httpClient = HttpClients.createDefault();
-        HttpResponse response = new HttpRequestBuilder(httpClient)
-                .host(address.getHostName()).port(address.getPort())
-                .path("/")
-                .method("GET").execute();
-        assertThat(response.getStatusCode(), is(200));
-
-        httpClient.close();
-        assertThat(node.disable(), is(true));
-
-        httpClient = HttpClients.createDefault();
-        response = new HttpRequestBuilder(httpClient)
-                .host(address.getHostName()).port(address.getPort())
-                .path("/")
-                .method("GET").execute();
-        assertThat(response.getStatusCode(), is(503));
-
-        node.start();
-
-        response = new HttpRequestBuilder(httpClient)
-                .host(address.getHostName()).port(address.getPort())
-                .path("/")
-                .method("GET").execute();
-        assertThat(response.getStatusCode(), is(200));
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                node.start();
+            }
+        }).start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                node.stop();
+            }
+        }).start();
     }
 }
