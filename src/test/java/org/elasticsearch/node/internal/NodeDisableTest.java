@@ -39,6 +39,9 @@ import static org.hamcrest.core.Is.is;
 
 public class NodeDisableTest extends ElasticsearchTestCase {
 
+    static {
+        ClassLoader.getSystemClassLoader().setDefaultAssertionStatus(true);
+    }
 
     @Test
     public void testHttpDisableAndReEnable() throws Exception {
