@@ -109,8 +109,10 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
     }
 
     public void stop() {
-        this.masterMappingUpdater.close();
-        this.masterMappingUpdater = null;
+        if (this.masterMappingUpdater != null) {
+            this.masterMappingUpdater.close();
+            this.masterMappingUpdater = null;
+        }
     }
 
     public void updateMappingOnMaster(String index, DocumentMapper documentMapper, String indexUUID) {
