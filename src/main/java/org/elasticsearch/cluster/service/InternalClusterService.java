@@ -153,16 +153,20 @@ public class InternalClusterService extends AbstractLifecycleComponent<ClusterSe
 
     @Override
     protected void doStop() throws ElasticsearchException {
-        this.reconnectToNodes.cancel(true);
+        if (this.reconnectToNodes != null) {
+            this.reconnectToNodes.cancel(true);
+        }
         for (NotifyTimeout onGoingTimeout : onGoingTimeouts) {
             onGoingTimeout.cancel();
             onGoingTimeout.listener.onClose();
         }
-        updateTasksExecutor.shutdown();
-        try {
-            updateTasksExecutor.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            // ignore
+        if (updateTasksExecutor != null) {
+            updateTasksExecutor.shutdown();
+            try {
+                updateTasksExecutor.awaitTermination(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                // ignore
+            }
         }
         remove(localNodeMasterListeners);
     }
