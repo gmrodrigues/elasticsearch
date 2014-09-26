@@ -140,7 +140,6 @@ public class AllShardsDeallocator extends AbstractDeallocator implements Cluster
             SettableFuture<DeallocationResult> future = waitForFullDeallocation;
             if (future != null) {
                 resetAllocationEnableSetting();
-                resetAllocationEnableSetting();
                 final SettableFuture<Void> resetSettingFuture = SettableFuture.create();
                 clusterService.add(new ClusterStateListener() {
                     @Override
