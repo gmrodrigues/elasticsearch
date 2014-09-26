@@ -161,7 +161,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
 
     protected void trackAllocationEnableSetting() {
         allocationEnableSetting.set(
-                clusterService.state().metaData().settings().get(
+                clusterService.state().metaData().transientSettings().get(
                         EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE));
     }
 
