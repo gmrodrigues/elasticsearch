@@ -75,7 +75,10 @@ public class FetchSourceSubPhase implements FetchSubPhase {
         SourceLookup source = context.lookup().source();
         Object value = source.filter(fetchSourceContext.includes(), fetchSourceContext.excludes());
         try {
-            BytesStreamOutput streamOutput = new BytesStreamOutput(source.internalSourceRef().length());
+            // use 1024 as max initialCapacity - assumption is that source might be very large
+            // and only a small subset is selected
+            final int initialCapacity = Math.min(1024, source.internalSourceRef().length());
+            BytesStreamOutput streamOutput = new BytesStreamOutput(initialCapacity);
             XContentBuilder builder = new XContentBuilder(context.lookup().source().sourceContentType().xContent(), streamOutput);
             builder.value(value);
             hitContext.hit().sourceRef(builder.bytes());
