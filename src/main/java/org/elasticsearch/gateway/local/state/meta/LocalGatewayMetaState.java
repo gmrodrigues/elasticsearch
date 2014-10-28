@@ -253,7 +253,9 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
                         if (newMetaData.hasIndex(danglingIndex)) {
                             logger.debug("[{}] no longer dangling (created), removing", danglingIndex);
                             DanglingIndex removed = danglingIndices.remove(danglingIndex);
-                            removed.future.cancel(false);
+                            if(removed.future != null){
+                                removed.future.cancel(false);
+                            }
                         }
                     }
                     // delete indices that are no longer part of the metadata
@@ -269,7 +271,10 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
                             }
                             IndexMetaData indexMetaData = loadIndex(indexName);
                             if (indexMetaData != null) {
-                                if (danglingTimeout.millis() == 0) {
+                                if(autoImportDangled.shouldImport()){
+                                    logger.info("[{}] dangling index, exists on local file system, but not in cluster metadata, auto import to cluster state [{}]", indexName, autoImportDangled);
+                                    danglingIndices.put(indexName, new DanglingIndex(indexName, null));
+                                } else if (danglingTimeout.millis() == 0) {
                                     logger.info("[{}] dangling index, exists on local file system, but not in cluster metadata, timeout set to 0, deleting now", indexName);
                                     FileSystemUtils.deleteRecursively(nodeEnv.indexLocations(new Index(indexName)));
                                 } else {
