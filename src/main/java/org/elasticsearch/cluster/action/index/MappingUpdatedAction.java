@@ -79,6 +79,7 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
 
     private volatile TimeValue additionalMappingChangeTime;
 
+
     class ApplySettings implements NodeSettingsService.Listener {
         @Override
         public void onRefreshSettings(Settings settings) {
@@ -113,6 +114,10 @@ public class MappingUpdatedAction extends TransportMasterNodeOperationAction<Map
     }
 
     public void stop() {
+        disable();
+    }
+
+    public void disable() {
         if (this.masterMappingUpdater != null) {
             this.masterMappingUpdater.close();
             this.masterMappingUpdater = null;

@@ -43,6 +43,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.elasticsearch.common.util.concurrent.EsExecutors.daemonThreadFactory;
+
 public abstract class AbstractDeallocator extends AbstractComponent implements Deallocator {
 
     static final String EXCLUDE_NODE_ID_FROM_INDEX = "index.routing.allocation.exclude._id";
@@ -68,14 +70,13 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
      * requests changing cluster state
      */
     protected static class ClusterChangeExecutor implements Closeable {
-        private final ThreadPoolExecutor executor;
+        private ThreadPoolExecutor executor;
         private final BlockingQueue<Runnable> workQueue;
 
 
         public ClusterChangeExecutor() {
             workQueue = new ArrayBlockingQueue<>(50);
-            executor = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, workQueue);
-            executor.prestartAllCoreThreads();
+            executor = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, workQueue, daemonThreadFactory("deallocator"));
         }
 
         public <TRequest extends ActionRequest, TResponse extends ActionResponse> void enqueue(
@@ -87,9 +88,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 public void run() {
                     // execute synchronously
                     try {
-                        listener.onResponse(
-                                action.execute(request).actionGet()
-                        );
+                        listener.onResponse(action.execute(request).actionGet(5, TimeUnit.SECONDS));
                     } catch (Exception e) {
                         listener.onFailure(e);
                     }
@@ -107,9 +106,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                     for (final TRequest request : requests) {
                         // execute synchronously
                         try {
-                            listener.onResponse(
-                                    action.execute(request).actionGet()
-                            );
+                            listener.onResponse(action.execute(request).actionGet(5, TimeUnit.SECONDS));
                         } catch (Exception e) {
                             listener.onFailure(e);
                         }

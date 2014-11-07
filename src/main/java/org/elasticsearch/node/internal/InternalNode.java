@@ -345,6 +345,8 @@ public final class InternalNode implements Node {
         // we close indices first, so operations won't be allowed on it
         injector.getInstance(IndexingMemoryController.class).disable();
         injector.getInstance(IndicesTTLService.class).disable();
+
+        injector.getInstance(MappingUpdatedAction.class).disable();
         injector.getInstance(IndicesService.class).disable();
 
         injector.getInstance(RoutingService.class).disable();

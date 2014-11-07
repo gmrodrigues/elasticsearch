@@ -31,6 +31,7 @@ import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.test.ElasticsearchTestCase;
 import org.elasticsearch.test.rest.client.http.HttpRequestBuilder;
 import org.elasticsearch.test.rest.client.http.HttpResponse;
+import org.junit.After;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
@@ -43,9 +44,11 @@ public class NodeDisableTest extends ElasticsearchTestCase {
         ClassLoader.getSystemClassLoader().setDefaultAssertionStatus(true);
     }
 
+    private InternalNode node;
+
     @Test
     public void testHttpDisableAndReEnable() throws Exception {
-        InternalNode node = (InternalNode)NodeBuilder.nodeBuilder().local(true).data(true).settings(
+        node = (InternalNode)NodeBuilder.nodeBuilder().local(true).data(true).settings(
                 ImmutableSettings.builder()
                         .put(ClusterName.SETTING, getClass().getName())
                         .put("node.name", getClass().getName())
@@ -84,5 +87,12 @@ public class NodeDisableTest extends ElasticsearchTestCase {
                 .path("/")
                 .method("GET").execute();
         assertThat(response.getStatusCode(), is(200));
+    }
+
+    @Override
+    @After
+    public void tearDown() throws Exception {
+        super.tearDown();
+        node.stop();
     }
 }
