@@ -22,10 +22,12 @@ package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.Closeable;
+
 /**
  * deallocates shards on one node, moving them to other nodes
  */
-public interface Deallocator {
+public interface Deallocator extends Closeable {
 
     public static class DeallocationResult {
 

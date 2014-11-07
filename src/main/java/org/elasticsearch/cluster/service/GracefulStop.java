@@ -30,13 +30,15 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.node.settings.NodeSettingsService;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class GracefulStop {
+public class GracefulStop implements Closeable {
 
     private final Deallocators deallocators;
     private final ClusterService clusterService;
@@ -45,6 +47,11 @@ public class GracefulStop {
     private AtomicReference<TimeValue> timeout = new AtomicReference<>();
     private final ESLogger logger = Loggers.getLogger(getClass());
     private ListenableFuture<Deallocator.DeallocationResult> deallocateFuture;
+
+    @Override
+    public void close() throws IOException {
+        deallocators.close();
+    }
 
     public static class SettingNames {
         public static final String TIMEOUT = "cluster.graceful_stop.timeout";

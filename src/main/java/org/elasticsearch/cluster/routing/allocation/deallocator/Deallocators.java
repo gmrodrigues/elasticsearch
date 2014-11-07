@@ -20,19 +20,24 @@
 
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
-import com.google.common.base.Objects;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class Deallocators implements Deallocator {
+import static com.google.common.base.MoreObjects.firstNonNull;
+
+public class Deallocators implements Deallocator, Closeable {
 
     public static final String GRACEFUL_STOP_MIN_AVAILABILITY = "cluster.graceful_stop.min_availability";
+
+
     public static class MinAvailability {
         public static final String FULL = "full";
         public static final String PRIMARIES = "primaries";
@@ -70,6 +75,10 @@ public class Deallocators implements Deallocator {
         public boolean isNoOp() {
             return true;
         }
+
+        @Override
+        public void close() throws IOException {
+        }
     };
 
     @Inject
@@ -77,6 +86,12 @@ public class Deallocators implements Deallocator {
         this.clusterService = clusterService;
         this.allShardsDeallocator = allShardsDeallocator;
         this.primariesDeallocator = primariesDeallocator;
+    }
+
+    @Override
+    public void close() throws IOException {
+        allShardsDeallocator.close();
+        primariesDeallocator.close();
     }
 
     @Override
@@ -108,19 +123,19 @@ public class Deallocators implements Deallocator {
 
     @Override
     public boolean isDeallocating() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
+        Deallocator deallocator = firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.isDeallocating();
     }
 
     @Override
     public boolean canDeallocate() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
+        Deallocator deallocator = firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.canDeallocate();
     }
 
     @Override
     public boolean isNoOp() {
-        Deallocator deallocator = Objects.firstNonNull(pendingDeallocation.get(), deallocator());
+        Deallocator deallocator = firstNonNull(pendingDeallocation.get(), deallocator());
         return deallocator.isNoOp();
     }
 

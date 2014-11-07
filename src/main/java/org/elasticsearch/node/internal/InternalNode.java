@@ -105,6 +105,7 @@ import org.elasticsearch.watcher.ResourceWatcherService;
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
@@ -437,6 +438,11 @@ public final class InternalNode implements Node {
         try {
             injector.getInstance(ThreadPool.class).awaitTermination(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
+            // ignore
+        }
+        try {
+            injector.getInstance(GracefulStop.class).close();
+        } catch (IOException e) {
             // ignore
         }
         stopWatch.stop().start("thread_pool_force_shutdown");

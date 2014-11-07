@@ -35,6 +35,8 @@ import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDeci
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.settings.ImmutableSettings;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -65,7 +67,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
      * executor with only 1 Thread, ensuring linearized execution of
      * requests changing cluster state
      */
-    protected static class ClusterChangeExecutor {
+    protected static class ClusterChangeExecutor implements Closeable {
         private final ThreadPoolExecutor executor;
         private final BlockingQueue<Runnable> workQueue;
 
@@ -114,6 +116,17 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                     }
                 }
             });
+        }
+
+        @Override
+        public void close() throws IOException {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(20, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.interrupted();
+            }
+            executor.shutdownNow();
         }
     }
 
@@ -176,5 +189,10 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
             request.transientSettingsToRemove(ImmutableSet.of(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE));
             clusterChangeExecutor.enqueue(request, clusterUpdateSettingsAction, resetListener);
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        clusterChangeExecutor.close();
     }
 }

@@ -20,7 +20,6 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
-import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
@@ -54,6 +53,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.google.common.base.MoreObjects.firstNonNull;
 
 /**
  * This deallocator only deallocates primary shards that have no replica.
@@ -307,7 +308,7 @@ public class PrimariesDeallocator extends AbstractDeallocator implements Cluster
                 int i = 0;
                 for (final String index : changed) {
                     Settings settings = ImmutableSettings.builder().put(EXCLUDE_NODE_ID_FROM_INDEX,
-                            COMMA_JOINER.join(Objects.firstNonNull(deallocatingIndices.get(index), Collections.EMPTY_SET))).build();
+                            COMMA_JOINER.join(firstNonNull(deallocatingIndices.get(index), Collections.EMPTY_SET))).build();
                     requests[i++] = new UpdateSettingsRequest(settings, index);
 
                 }
