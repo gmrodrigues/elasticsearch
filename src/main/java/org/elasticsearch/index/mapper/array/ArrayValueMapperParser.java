@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.elasticsearch.index.mapper.object;
+package org.elasticsearch.index.mapper.array;
 
 /**
  * A marker interface indicating that this mapper can handle array value, and the array
