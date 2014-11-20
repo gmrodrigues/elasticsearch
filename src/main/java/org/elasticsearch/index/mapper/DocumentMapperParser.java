@@ -37,6 +37,7 @@ import org.elasticsearch.index.analysis.AnalysisService;
 import org.elasticsearch.index.analysis.NamedAnalyzer;
 import org.elasticsearch.index.codec.docvaluesformat.DocValuesFormatService;
 import org.elasticsearch.index.codec.postingsformat.PostingsFormatService;
+import org.elasticsearch.index.mapper.array.DynamicArrayFieldMapperBuilderFactory;
 import org.elasticsearch.index.mapper.core.*;
 import org.elasticsearch.index.mapper.geo.GeoPointFieldMapper;
 import org.elasticsearch.index.mapper.geo.GeoShapeFieldMapper;
@@ -72,19 +73,22 @@ public class DocumentMapperParser extends AbstractIndexComponent {
 
     private final Object typeParsersMutex = new Object();
     private final Version indexVersionCreated;
+    private final DynamicArrayFieldMapperBuilderFactory dynamicArrayFieldMapperBuilderFactory;
 
     private volatile ImmutableMap<String, Mapper.TypeParser> typeParsers;
     private volatile ImmutableMap<String, Mapper.TypeParser> rootTypeParsers;
 
     public DocumentMapperParser(Index index, @IndexSettings Settings indexSettings, AnalysisService analysisService,
                                 PostingsFormatService postingsFormatService, DocValuesFormatService docValuesFormatService,
-                                SimilarityLookupService similarityLookupService, ScriptService scriptService) {
+                                SimilarityLookupService similarityLookupService, ScriptService scriptService,
+                                @Nullable DynamicArrayFieldMapperBuilderFactory dynamicArrayFieldMapperBuilderFactory) {
         super(index, indexSettings);
         this.analysisService = analysisService;
         this.postingsFormatService = postingsFormatService;
         this.docValuesFormatService = docValuesFormatService;
         this.similarityLookupService = similarityLookupService;
         this.scriptService = scriptService;
+        this.dynamicArrayFieldMapperBuilderFactory = dynamicArrayFieldMapperBuilderFactory;
         MapBuilder<String, Mapper.TypeParser> typeParsersBuilder = new MapBuilder<String, Mapper.TypeParser>()
                 .put(ByteFieldMapper.CONTENT_TYPE, new ByteFieldMapper.TypeParser())
                 .put(ShortFieldMapper.CONTENT_TYPE, new ShortFieldMapper.TypeParser())
@@ -129,6 +133,11 @@ public class DocumentMapperParser extends AbstractIndexComponent {
                 .put(FieldNamesFieldMapper.NAME, new FieldNamesFieldMapper.TypeParser())
                 .immutableMap();
         indexVersionCreated = Version.indexCreated(indexSettings);
+    }
+
+    @Nullable
+    public DynamicArrayFieldMapperBuilderFactory dynamicArrayFieldMapperBuilderFactory() {
+        return dynamicArrayFieldMapperBuilderFactory;
     }
 
     public void putTypeParser(String type, Mapper.TypeParser typeParser) {
