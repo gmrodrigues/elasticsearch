@@ -170,7 +170,8 @@ public class DynamicMappingTests extends ElasticsearchSingleNodeTest {
         IndexService service = createIndex("test");
         client().prepareIndex("test", "type").setSource("empty_field", "").get();
         FieldMappers mappers = service.mapperService().indexName("empty_field");
-        assertTrue(mappers != null && mappers.isEmpty() == false);
+        // Treat empty string with no mapping like NULL value
+         assertTrue(mappers == null);
     }
 
     @Test
