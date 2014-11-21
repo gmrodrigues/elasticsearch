@@ -831,8 +831,13 @@ public class ObjectMapper implements Mapper, AllFieldMapper.IncludeInAll {
         return builder;
     }
 
-    public void toXContent(XContentBuilder builder, Params params, ToXContent custom, Mapper... additionalMappers) throws IOException {
+    public void toXContent(XContentBuilder builder, Params params, @Nullable ToXContent custom, Mapper... additionalMappers) throws IOException {
         builder.startObject(name);
+        doXContentBody(builder, params, custom, additionalMappers);
+        builder.endObject();
+    }
+
+    public void doXContentBody(XContentBuilder builder, Params params, @Nullable ToXContent custom, Mapper... additionalMappers) throws IOException {
         if (nested.isNested()) {
             builder.field("type", NESTED_CONTENT_TYPE);
             if (nested.isIncludeInParent()) {
@@ -898,7 +903,6 @@ public class ObjectMapper implements Mapper, AllFieldMapper.IncludeInAll {
             }
             builder.endObject();
         }
-        builder.endObject();
     }
 
     protected void doXContent(XContentBuilder builder, Params params) throws IOException {
