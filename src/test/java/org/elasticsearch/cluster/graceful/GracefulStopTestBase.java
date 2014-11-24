@@ -19,9 +19,11 @@
 
 package org.elasticsearch.cluster.graceful;
 
+import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableMap;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.allocation.deallocator.Deallocators;
+import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.cluster.service.GracefulStop;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.xcontent.XContentFactory;
@@ -32,6 +34,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.ExpectedException;
+
+import java.util.concurrent.TimeUnit;
 
 public class GracefulStopTestBase extends ElasticsearchIntegrationTest {
 
@@ -67,6 +71,8 @@ public class GracefulStopTestBase extends ElasticsearchIntegrationTest {
     public void cleanUp() {
         // reset to default
         setSettings(false, true, "primaries", "2h");
+        gracefulStop = null;
+        deallocators = null;
     }
 
     protected void setSettings(boolean force, boolean reallocate, String minAvailability, String timeOut) {
@@ -76,6 +82,21 @@ public class GracefulStopTestBase extends ElasticsearchIntegrationTest {
                         .put("cluster.graceful_stop.reallocate", reallocate)
                         .put("cluster.graceful_stop.min_availability", minAvailability)
                         .put("cluster.graceful_stop.timeout", timeOut)).execute().actionGet();
+    }
+
+    /**
+     * asserting the cluster.routing.allocation.enable setting got reset to null
+     */
+    private static final Predicate ALLOCATION_SETTINGS_GOT_RESET = new Predicate() {
+        @Override
+        public boolean apply(Object input) {
+            return internalCluster().clusterService().state().metaData()
+                    .settings().get(EnableAllocationDecider.CLUSTER_ROUTING_ALLOCATION_ENABLE) == null;
+        }
+    };
+
+    protected void assertAllocationSettingsGotReset() throws Exception {
+        assertTrue("'cluster.routing.allocation.enable' did not get reset", awaitBusy(ALLOCATION_SETTINGS_GOT_RESET, 5, TimeUnit.SECONDS));
     }
 
     protected void createIndex(int shards, int replicas, int records) {

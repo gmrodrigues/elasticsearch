@@ -20,7 +20,6 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
@@ -37,20 +36,16 @@ import org.elasticsearch.common.settings.ImmutableSettings;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
-import static org.elasticsearch.common.util.concurrent.EsExecutors.daemonThreadFactory;
 
 public abstract class AbstractDeallocator extends AbstractComponent implements Deallocator {
 
     static final String EXCLUDE_NODE_ID_FROM_INDEX = "index.routing.allocation.exclude._id";
     static final String CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID = "cluster.routing.allocation.exclude._id";
     static final Joiner COMMA_JOINER = Joiner.on(',');
-    static final Splitter COMMA_SPLITTER = Splitter.on(',');
     static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     final ActionListener<ClusterUpdateSettingsResponse> resetListener =  new ActionListener<ClusterUpdateSettingsResponse>() {
@@ -69,21 +64,19 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
      * executor with only 1 Thread, ensuring linearized execution of
      * requests changing cluster state
      */
-    protected static class ClusterChangeExecutor implements Closeable {
-        private ThreadPoolExecutor executor;
-        private final BlockingQueue<Runnable> workQueue;
-
+    public static class ClusterChangeExecutor implements Closeable {
+        private ExecutorService executor;
 
         public ClusterChangeExecutor() {
-            workQueue = new ArrayBlockingQueue<>(50);
-            executor = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, workQueue, daemonThreadFactory("deallocator"));
+            executor = Executors.newSingleThreadExecutor();
+
         }
 
         public <TRequest extends ActionRequest, TResponse extends ActionResponse> void enqueue(
                 final TRequest request,
                 final TransportAction<TRequest, TResponse> action,
                 final ActionListener<TResponse> listener) {
-            workQueue.add(new Runnable() {
+            executor.execute(new Runnable() {
                 @Override
                 public void run() {
                     // execute synchronously
@@ -100,7 +93,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 final TRequest requests[],
                 final TransportAction<TRequest, TResponse> action,
                 final ActionListener<TResponse> listener) {
-            workQueue.add(new Runnable() {
+            executor.execute(new Runnable() {
                 @Override
                 public void run() {
                     for (final TRequest request : requests) {

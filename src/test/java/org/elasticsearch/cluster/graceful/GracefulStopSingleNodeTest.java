@@ -25,7 +25,11 @@ import org.junit.Test;
 
 import static org.hamcrest.core.Is.is;
 
-@ElasticsearchIntegrationTest.ClusterScope(scope= ElasticsearchIntegrationTest.Scope.TEST, numDataNodes = 1, numClientNodes = 0, enableRandomBenchNodes = false)
+@ElasticsearchIntegrationTest.ClusterScope(
+        scope= ElasticsearchIntegrationTest.Scope.TEST,
+        numDataNodes = 1,
+        numClientNodes = 0,
+        enableRandomBenchNodes = false)
 public class GracefulStopSingleNodeTest extends GracefulStopTestBase {
 
     private void assertSingleNodeGracefulStop() {
