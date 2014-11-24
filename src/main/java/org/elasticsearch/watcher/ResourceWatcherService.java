@@ -104,9 +104,15 @@ public class ResourceWatcherService extends AbstractLifecycleComponent<ResourceW
         if (!enabled) {
             return;
         }
-        lowFuture.cancel(true);
-        mediumFuture.cancel(true);
-        highFuture.cancel(true);
+        if (lowFuture != null) {
+            lowFuture.cancel(true);
+        }
+        if (mediumFuture != null) {
+            mediumFuture.cancel(true);
+        }
+        if (highFuture != null) {
+            highFuture.cancel(true);
+        }
     }
 
     @Override
