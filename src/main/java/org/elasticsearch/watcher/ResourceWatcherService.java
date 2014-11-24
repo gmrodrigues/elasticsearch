@@ -72,19 +72,8 @@ public class ResourceWatcherService extends AbstractLifecycleComponent<ResourceW
         if (!enabled) {
             return;
         }
-<<<<<<< HEAD
         if (scheduledFuture != null) {
             scheduledFuture.cancel(true);
-=======
-        if (lowFuture != null) {
-            lowFuture.cancel(true);
-        }
-        if (mediumFuture != null) {
-            mediumFuture.cancel(true);
-        }
-        if (highFuture != null) {
-            highFuture.cancel(true);
->>>>>>> 1a10d89... fix NPE in ResourceWatcherService on fast/parallel starts and stops of a node
         }
     }
 

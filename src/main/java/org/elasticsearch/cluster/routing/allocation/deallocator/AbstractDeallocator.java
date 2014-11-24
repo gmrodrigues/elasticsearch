@@ -20,7 +20,6 @@
 package org.elasticsearch.cluster.routing.allocation.deallocator;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
@@ -34,10 +33,12 @@ import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.util.concurrent.EsExecutors;
 
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -46,7 +47,6 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
     static final String EXCLUDE_NODE_ID_FROM_INDEX = "index.routing.allocation.exclude._id";
     static final String CLUSTER_ROUTING_EXCLUDE_BY_NODE_ID = "cluster.routing.allocation.exclude._id";
     static final Joiner COMMA_JOINER = Joiner.on(',');
-    static final Splitter COMMA_SPLITTER = Splitter.on(',');
     static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     final ActionListener<ClusterUpdateSettingsResponse> resetListener =  new ActionListener<ClusterUpdateSettingsResponse>() {
@@ -65,29 +65,24 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
      * executor with only 1 Thread, ensuring linearized execution of
      * requests changing cluster state
      */
-    protected static class ClusterChangeExecutor {
-        private final ThreadPoolExecutor executor;
-        private final BlockingQueue<Runnable> workQueue;
-
+    public static class ClusterChangeExecutor implements Closeable {
+        private ExecutorService executor;
 
         public ClusterChangeExecutor() {
-            workQueue = new ArrayBlockingQueue<>(50);
-            executor = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, workQueue);
-            executor.prestartAllCoreThreads();
+            executor = Executors.newSingleThreadExecutor(EsExecutors.daemonThreadFactory("deallocators"));
+
         }
 
         public <TRequest extends ActionRequest, TResponse extends ActionResponse> void enqueue(
                 final TRequest request,
                 final TransportAction<TRequest, TResponse> action,
                 final ActionListener<TResponse> listener) {
-            workQueue.add(new Runnable() {
+            executor.execute(new Runnable() {
                 @Override
                 public void run() {
                     // execute synchronously
                     try {
-                        listener.onResponse(
-                                action.execute(request).actionGet()
-                        );
+                        listener.onResponse(action.execute(request).actionGet(5, TimeUnit.SECONDS));
                     } catch (Exception e) {
                         listener.onFailure(e);
                     }
@@ -99,21 +94,30 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
                 final TRequest requests[],
                 final TransportAction<TRequest, TResponse> action,
                 final ActionListener<TResponse> listener) {
-            workQueue.add(new Runnable() {
+            executor.execute(new Runnable() {
                 @Override
                 public void run() {
                     for (final TRequest request : requests) {
                         // execute synchronously
                         try {
-                            listener.onResponse(
-                                    action.execute(request).actionGet()
-                            );
+                            listener.onResponse(action.execute(request).actionGet(5, TimeUnit.SECONDS));
                         } catch (Exception e) {
                             listener.onFailure(e);
                         }
                     }
                 }
             });
+        }
+
+        @Override
+        public void close() throws IOException {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(20, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.interrupted();
+            }
+            executor.shutdownNow();
         }
     }
 

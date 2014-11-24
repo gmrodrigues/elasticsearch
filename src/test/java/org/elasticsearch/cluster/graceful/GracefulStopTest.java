@@ -25,7 +25,11 @@ import org.junit.Test;
 
 import static org.hamcrest.core.Is.is;
 
-@ElasticsearchIntegrationTest.ClusterScope(scope = ElasticsearchIntegrationTest.Scope.TEST, numDataNodes = 3)
+@ElasticsearchIntegrationTest.ClusterScope(
+        scope= ElasticsearchIntegrationTest.Scope.TEST,
+        numDataNodes = 3,
+        numClientNodes = 0,
+        enableRandomBenchNodes = false)
 public class GracefulStopTest extends GracefulStopTestBase {
 
     @Test
@@ -37,6 +41,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         // cannot deallocate
         assertThat(gracefulStop.deallocate(), is(false));
         assertThat(deallocators.isDeallocating(), is(false));
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -47,6 +52,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(false));
         assertThat(gracefulStop.deallocate(), is(true));
         assertThat(deallocators.isDeallocating(), is(false));
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -57,6 +63,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(true));
         assertThat(gracefulStop.deallocate(), is(true));
         assertThat(deallocators.isDeallocating(), is(true)); // still deallocated
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -67,6 +74,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(true));
         assertThat(gracefulStop.deallocate(), is(false));
         assertThat(deallocators.isDeallocating(), is(false)); // not deallocating
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -77,6 +85,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(false));
         assertThat(gracefulStop.deallocate(), is(false));
         assertThat(deallocators.isDeallocating(), is(false));
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -87,6 +96,7 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(true));
         assertThat(gracefulStop.deallocate(), is(true));
         assertThat(deallocators.isDeallocating(), is(true)); // still deallocating
+        assertAllocationSettingsGotReset();
     }
 
     @Test
@@ -97,13 +107,16 @@ public class GracefulStopTest extends GracefulStopTestBase {
         assertThat(gracefulStop.reallocate(), is(true));
         assertThat(gracefulStop.deallocate(), is(true));
         assertThat(deallocators.isDeallocating(), is(false)); // not deallocating
+        assertAllocationSettingsGotReset();
     }
 
     @Test
     public void testTimeout() throws Exception {
         setSettings(false, true, Deallocators.MinAvailability.PRIMARIES, "1ms");
         createIndex(30, 0, 30);
+
         assertThat(gracefulStop.reallocate(), is(true));
         assertThat(gracefulStop.deallocate(), is(false));
+        assertAllocationSettingsGotReset();
     }
 }
