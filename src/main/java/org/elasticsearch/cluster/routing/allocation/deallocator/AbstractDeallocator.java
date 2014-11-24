@@ -37,7 +37,10 @@ import org.elasticsearch.common.settings.ImmutableSettings;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.concurrent.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.elasticsearch.common.util.concurrent.EsExecutors.daemonThreadFactory;
@@ -74,7 +77,6 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
         public ClusterChangeExecutor() {
             workQueue = new ArrayBlockingQueue<>(50);
             executor = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, workQueue, daemonThreadFactory("deallocator"));
-            executor.prestartAllCoreThreads();
         }
 
         public <TRequest extends ActionRequest, TResponse extends ActionResponse> void enqueue(
