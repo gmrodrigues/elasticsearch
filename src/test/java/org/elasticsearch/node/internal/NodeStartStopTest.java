@@ -23,12 +23,12 @@ package org.elasticsearch.node.internal;
 
 import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import org.elasticsearch.cluster.ClusterName;
-import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.common.settings.ImmutableSettings;
-import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.test.ElasticsearchTestCase;
 import org.junit.Test;
+
+import java.util.Locale;
 
 public class NodeStartStopTest extends ElasticsearchTestCase {
 
@@ -41,28 +41,30 @@ public class NodeStartStopTest extends ElasticsearchTestCase {
     public void testFastStartAndStop() throws Exception {
         // assert that no exception is thrown when starting and stopping the
         // internal node in parallel etc.
+        String name = String.format(Locale.ENGLISH, "%s_%d", getClass().getName(), System.currentTimeMillis());
         final InternalNode node = (InternalNode) NodeBuilder.nodeBuilder().local(true).data(true).settings(
                 ImmutableSettings.builder()
-                        .put(ClusterName.SETTING, getClass().getName())
-                        .put("node.name", getClass().getName())
-                        .put(IndexMetaData.SETTING_NUMBER_OF_SHARDS, 1)
-                        .put(IndexMetaData.SETTING_NUMBER_OF_SHARDS, 0)
-                        .put(EsExecutors.PROCESSORS, 1)
+                        .put(ClusterName.SETTING, name)
+                        .put("node.name", name)
                         .put("http.enabled", true)
-                        .put("index.store.type", "ram")
                         .put("config.ignore_system_properties", true)
                         .put("gateway.type", "none")).build();
-        new Thread(new Runnable() {
+        Thread startThread = new Thread(new Runnable() {
             @Override
             public void run() {
                 node.start();
             }
-        }).start();
-        new Thread(new Runnable() {
+        });
+        Thread stopThread = new Thread(new Runnable() {
             @Override
             public void run() {
                 node.stop();
             }
-        }).start();
+        });
+        startThread.start();
+        stopThread.start();
+        startThread.join();
+        stopThread.join();
+        node.close();
     }
 }
