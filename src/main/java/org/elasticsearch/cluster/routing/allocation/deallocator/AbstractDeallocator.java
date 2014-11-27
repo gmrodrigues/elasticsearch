@@ -33,6 +33,7 @@ import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.util.concurrent.EsExecutors;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -68,7 +69,7 @@ public abstract class AbstractDeallocator extends AbstractComponent implements D
         private ExecutorService executor;
 
         public ClusterChangeExecutor() {
-            executor = Executors.newSingleThreadExecutor();
+            executor = Executors.newSingleThreadExecutor(EsExecutors.daemonThreadFactory("deallocator"));
 
         }
 
