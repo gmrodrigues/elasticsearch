@@ -27,6 +27,7 @@ import org.elasticsearch.cluster.ClusterChangedEvent;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateListener;
+import org.elasticsearch.cluster.action.index.NodeIndexDeletedAction;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.node.DiscoveryNode;
@@ -62,6 +63,7 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
     static final String GLOBAL_STATE_FILE_PREFIX = "global-";
     private static final String INDEX_STATE_FILE_PREFIX = "state-";
     private static final String GLOBAL_STATE_LOG_TYPE = "[_global]";
+
     static enum AutoImportDangledState {
         NO() {
             @Override
@@ -102,6 +104,8 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
 
     private final LocalAllocateDangledIndices allocateDangledIndices;
 
+    private final LocalGatewayMetaMigrator migrator;
+
     @Nullable
     private volatile MetaData currentMetaData;
 
@@ -122,13 +126,17 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
 
     @Inject
     public LocalGatewayMetaState(Settings settings, ThreadPool threadPool, NodeEnvironment nodeEnv,
-                                 TransportNodesListGatewayMetaState nodesListGatewayMetaState, LocalAllocateDangledIndices allocateDangledIndices,
-                                 IndicesService indicesService, ClusterService clusterService) throws Exception {
+                                 TransportNodesListGatewayMetaState nodesListGatewayMetaState,
+                                 LocalAllocateDangledIndices allocateDangledIndices,
+                                 IndicesService indicesService,
+                                 ClusterService clusterService,
+                                 LocalGatewayMetaMigrator migrator) throws Exception {
         super(settings);
         this.nodeEnv = nodeEnv;
         this.threadPool = threadPool;
         this.format = XContentType.fromRestContentType(settings.get("format", "smile"));
         this.allocateDangledIndices = allocateDangledIndices;
+        this.migrator = migrator;
         nodesListGatewayMetaState.init(this);
 
         if (this.format == XContentType.SMILE) {
@@ -392,7 +400,7 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
                 metaDataBuilder.put(indexMetaData, false);
             }
         }
-        return metaDataBuilder.build();
+        return migrator.migrateMetaData(metaDataBuilder.build());
     }
 
     @Nullable
