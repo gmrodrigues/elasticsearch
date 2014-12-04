@@ -23,8 +23,10 @@ import org.elasticsearch.cluster.routing.allocation.allocator.ShardsAllocatorMod
 import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.common.inject.PreProcessModule;
+import org.elasticsearch.common.inject.multibindings.MapBinder;
 import org.elasticsearch.gateway.Gateway;
 import org.elasticsearch.gateway.local.state.meta.LocalAllocateDangledIndices;
+import org.elasticsearch.gateway.local.state.meta.LocalGatewayMetaMigrator;
 import org.elasticsearch.gateway.local.state.meta.LocalGatewayMetaState;
 import org.elasticsearch.gateway.local.state.meta.TransportNodesListGatewayMetaState;
 import org.elasticsearch.gateway.local.state.shards.LocalGatewayShardsState;
@@ -35,8 +37,12 @@ import org.elasticsearch.gateway.local.state.shards.TransportNodesListGatewaySta
  */
 public class LocalGatewayModule extends AbstractModule implements PreProcessModule {
 
+    MapBinder<String, LocalGatewayMetaMigrator.LocalGatewayMetaDataMigration> migrationBinder;
+
     @Override
     protected void configure() {
+        migrationBinder = MapBinder.newMapBinder(binder(), String.class, LocalGatewayMetaMigrator.LocalGatewayMetaDataMigration.class);
+
         bind(Gateway.class).to(LocalGateway.class).asEagerSingleton();
         bind(LocalGatewayShardsState.class).asEagerSingleton();
         bind(TransportNodesListGatewayMetaState.class).asEagerSingleton();

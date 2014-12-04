@@ -101,6 +101,8 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
     private final LocalAllocateDangledIndices allocateDangledIndices;
     private final NodeIndexDeletedAction nodeIndexDeletedAction;
 
+    private final LocalGatewayMetaMigrator migrator;
+
     @Nullable
     private volatile MetaData currentMetaData;
 
@@ -117,13 +119,15 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
     @Inject
     public LocalGatewayMetaState(Settings settings, ThreadPool threadPool, NodeEnvironment nodeEnv,
                                  TransportNodesListGatewayMetaState nodesListGatewayMetaState, LocalAllocateDangledIndices allocateDangledIndices,
-                                 NodeIndexDeletedAction nodeIndexDeletedAction) throws Exception {
+                                 NodeIndexDeletedAction nodeIndexDeletedAction,
+                                 LocalGatewayMetaMigrator migrator) throws Exception {
         super(settings);
         this.nodeEnv = nodeEnv;
         this.threadPool = threadPool;
         this.format = XContentType.fromRestContentType(settings.get("format", "smile"));
         this.allocateDangledIndices = allocateDangledIndices;
         this.nodeIndexDeletedAction = nodeIndexDeletedAction;
+        this.migrator = migrator;
         nodesListGatewayMetaState.init(this);
 
         if (this.format == XContentType.SMILE) {
@@ -469,7 +473,7 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
                 metaDataBuilder.put(indexMetaData, false);
             }
         }
-        return metaDataBuilder.build();
+        return migrator.migrateMetaData(metaDataBuilder.build());
     }
 
     @Nullable
@@ -560,7 +564,6 @@ public class LocalGatewayMetaState extends AbstractComponent implements ClusterS
                 }
             }
         }
-
         return metaData;
     }
 
