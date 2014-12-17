@@ -24,6 +24,7 @@ import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.test.ElasticsearchTestCase;
+import org.junit.After;
 import org.junit.Test;
 
 import java.util.Locale;
@@ -35,6 +36,14 @@ public class NodeStartStopTest extends ElasticsearchTestCase {
     }
 
     private InternalNode node;
+
+    @After
+    public void stopNode() {
+        if (node != null) {
+            node.close();
+            node = null;
+        }
+    }
 
     @Repeat(iterations = 10)
     @Test
@@ -65,7 +74,5 @@ public class NodeStartStopTest extends ElasticsearchTestCase {
         stopThread.start();
         startThread.join();
         stopThread.join();
-        node.close();
-        node = null;
     }
 }
