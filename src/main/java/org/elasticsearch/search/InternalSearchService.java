@@ -528,7 +528,7 @@ public class InternalSearchService extends AbstractLifecycleComponent<SearchServ
         }
     }
 
-    private SearchContext findContext(long id) throws SearchContextMissingException {
+    protected SearchContext findContext(long id) throws SearchContextMissingException {
         SearchContext context = activeContexts.get(id);
         if (context == null) {
             throw new SearchContextMissingException(id);
@@ -755,7 +755,7 @@ public class InternalSearchService extends AbstractLifecycleComponent<SearchServ
      * Shortcut ids to load, we load only "from" and up to "size". The phase controller
      * handles this as well since the result is always size * shards for Q_A_F
      */
-    private void shortcutDocIdsToLoad(SearchContext context) {
+    protected void shortcutDocIdsToLoad(SearchContext context) {
         if (!context.useSlowScroll() && context.request().scroll() != null) {
             TopDocs topDocs = context.queryResult().topDocs();
             int[] docIdsToLoad = new int[topDocs.scoreDocs.length];
