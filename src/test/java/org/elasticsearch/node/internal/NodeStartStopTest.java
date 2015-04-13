@@ -49,6 +49,7 @@ public class NodeStartStopTest extends ElasticsearchTestCase {
                         .put("http.enabled", true)
                         .put("config.ignore_system_properties", true)
                         .put("gateway.type", "none")).build();
+
         Thread startThread = new Thread(new Runnable() {
             @Override
             public void run() {
