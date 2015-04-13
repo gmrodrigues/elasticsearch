@@ -238,7 +238,7 @@ public final class InternalNode implements Node {
         return client;
     }
 
-    public Node start() {
+    public synchronized Node start() {
         if (!lifecycle.moveToStarted()) {
             return this;
         }
@@ -292,7 +292,7 @@ public final class InternalNode implements Node {
     }
 
     @Override
-    public Node stop() {
+    public synchronized Node stop() {
         if (!lifecycle.moveToStopped()) {
             return this;
         }
