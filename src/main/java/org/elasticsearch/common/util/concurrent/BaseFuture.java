@@ -114,7 +114,7 @@ public abstract class BaseFuture<V> implements Future<V> {
      */
     @Override
     public V get() throws InterruptedException, ExecutionException {
-        Transports.assertNotTransportThread("Blocking operation");
+        // Transports.assertNotTransportThread("Blocking operation");
         return sync.get();
     }
 
