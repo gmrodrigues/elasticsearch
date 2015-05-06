@@ -80,19 +80,19 @@ public class RecoverySourceHandler implements Engine.RecoveryHandler {
 
     protected final ESLogger logger;
     // Shard that is going to be recovered (the "source")
-    private final IndexShard shard;
-    private final String indexName;
-    private final int shardId;
+    protected final IndexShard shard;
+    protected final String indexName;
+    protected final int shardId;
     // Request containing source and target node information
-    private final StartRecoveryRequest request;
-    private final RecoverySettings recoverySettings;
-    private final TransportService transportService;
-    private final ClusterService clusterService;
-    private final IndexService indexService;
-    private final MappingUpdatedAction mappingUpdatedAction;
+    protected final StartRecoveryRequest request;
+    protected final RecoverySettings recoverySettings;
+    protected final TransportService transportService;
+    protected final ClusterService clusterService;
+    protected final IndexService indexService;
+    protected final MappingUpdatedAction mappingUpdatedAction;
 
-    private final RecoveryResponse response;
-    private final CancellableThreads cancellableThreads = new CancellableThreads() {
+    protected final RecoveryResponse response;
+    protected final CancellableThreads cancellableThreads = new CancellableThreads() {
         @Override
         protected void onCancel(String reason, @Nullable Throwable suppressedException) {
             RuntimeException e;

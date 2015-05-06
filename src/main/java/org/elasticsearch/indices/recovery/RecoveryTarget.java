@@ -114,6 +114,18 @@ public class RecoveryTarget extends AbstractComponent {
         });
     }
 
+    public RecoveryStatus recoveryStatus(IndexShard indexShard) {
+        try (RecoveriesCollection.StatusRef statusRef = onGoingRecoveries.findRecoveryByShard(indexShard)) {
+            if (statusRef == null) {
+                return null;
+            }
+            return statusRef.status();
+        } catch (Exception e) {
+            // shouldn't really happen, but have to be here due to auto close
+            throw new ElasticsearchException("error while getting recovery state", e);
+        }
+    }
+
     public RecoveryState recoveryState(IndexShard indexShard) {
         try (RecoveriesCollection.StatusRef statusRef = onGoingRecoveries.findRecoveryByShard(indexShard)) {
             if (statusRef == null) {
