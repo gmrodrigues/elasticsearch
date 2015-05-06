@@ -33,6 +33,7 @@ import org.junit.rules.ExpectedException;
 import java.io.IOException;
 import java.util.Arrays;
 
+@ElasticsearchIntegrationTest.ClusterScope(numClientNodes = 0)
 public class DeallocatorTest extends ElasticsearchIntegrationTest {
 
     @Rule

@@ -107,37 +107,37 @@ public class InternalSearchService extends AbstractLifecycleComponent<SearchServ
     public static final String KEEPALIVE_INTERVAL_KEY = "search." + KEEPALIVE_INTERVAL_COMPONENENT_KEY;
 
 
-    private final ThreadPool threadPool;
+    protected final ThreadPool threadPool;
 
-    private final ClusterService clusterService;
+    protected final ClusterService clusterService;
 
-    private final IndicesService indicesService;
+    protected final IndicesService indicesService;
 
     private final IndicesWarmer indicesWarmer;
 
-    private final ScriptService scriptService;
+    protected final ScriptService scriptService;
 
-    private final CacheRecycler cacheRecycler;
+    protected final CacheRecycler cacheRecycler;
 
-    private final PageCacheRecycler pageCacheRecycler;
+    protected final PageCacheRecycler pageCacheRecycler;
 
-    private final BigArrays bigArrays;
+    protected final BigArrays bigArrays;
 
-    private final DfsPhase dfsPhase;
+    protected final DfsPhase dfsPhase;
 
-    private final QueryPhase queryPhase;
+    protected final QueryPhase queryPhase;
 
-    private final FetchPhase fetchPhase;
+    protected final FetchPhase fetchPhase;
 
     private final IndicesQueryCache indicesQueryCache;
 
-    private final long defaultKeepAlive;
+    protected final long defaultKeepAlive;
 
     private final ScheduledFuture<?> keepAliveReaper;
 
-    private final AtomicLong idGenerator = new AtomicLong();
+    protected final AtomicLong idGenerator = new AtomicLong();
 
-    private final ConcurrentMapLong<SearchContext> activeContexts = ConcurrentCollections.newConcurrentMapLongWithAggressiveConcurrency();
+    protected final ConcurrentMapLong<SearchContext> activeContexts = ConcurrentCollections.newConcurrentMapLongWithAggressiveConcurrency();
 
     private final ImmutableMap<String, SearchParseElement> elementParsers;
 
@@ -627,16 +627,16 @@ public class InternalSearchService extends AbstractLifecycleComponent<SearchServ
         }
     }
 
-    private void contextProcessing(SearchContext context) {
+    protected void contextProcessing(SearchContext context) {
         // disable timeout while executing a search
         context.accessed(-1);
     }
 
-    private void contextProcessedSuccessfully(SearchContext context) {
+    protected void contextProcessedSuccessfully(SearchContext context) {
         context.accessed(threadPool.estimatedTimeInMillis());
     }
 
-    private void cleanContext(SearchContext context) {
+    protected void cleanContext(SearchContext context) {
         assert context == SearchContext.current();
         context.clearReleasables(Lifetime.PHASE);
         SearchContext.removeCurrent();
