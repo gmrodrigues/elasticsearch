@@ -4,22 +4,22 @@
       cluster.put_settings:
         body:
           persistent:
-            discovery.zen.minimum_master_nodes: 1
+            indices.recovery.compress: true
         flat_settings: true
 
-  - match: {persistent: {discovery.zen.minimum_master_nodes: "1"}}
+  - match: {persistent: {indices.recovery.compress: "true"}}
 
   - do:
       cluster.get_settings:
         flat_settings: true
 
-  - match: {persistent: {discovery.zen.minimum_master_nodes: "1"}}
+  - match: {persistent: {indices.recovery.compress: "true"}}
 
   - do:
       cluster.put_settings:
         body:
           persistent:
-            discovery.zen.minimum_master_nodes: null
+            indices.recovery.compress: null
         flat_settings: true
 
   - match: {persistent: {}}
