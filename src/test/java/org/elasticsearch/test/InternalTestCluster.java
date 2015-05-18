@@ -53,6 +53,7 @@ import org.elasticsearch.cluster.routing.allocation.decider.ThrottlingAllocation
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.breaker.CircuitBreaker;
+import org.elasticsearch.common.inject.Key;
 import org.elasticsearch.common.io.FileSystemUtils;
 import org.elasticsearch.common.lease.Releasables;
 import org.elasticsearch.common.logging.ESLogger;
@@ -1012,6 +1013,14 @@ public final class InternalTestCluster extends TestCluster {
         return instances;
     }
 
+    public synchronized <T> Iterable<T> getInstances(Key<T> key) {
+        List<T> instances = new ArrayList<>(nodes.size());
+        for (NodeAndClient nodeAndClient : nodes.values()) {
+            instances.add(getInstanceFromNode(key, nodeAndClient.node));
+        }
+        return instances;
+    }
+
     /**
      * Returns an Iterable to all instances for the given class &gt;T&lt; across all data nodes in the cluster.
      */
@@ -1064,6 +1073,10 @@ public final class InternalTestCluster extends TestCluster {
 
     private synchronized <T> T getInstanceFromNode(Class<T> clazz, InternalNode node) {
         return node.injector().getInstance(clazz);
+    }
+
+    private synchronized <T> T getInstanceFromNode(Key<T> key, InternalNode node) {
+        return node.injector().getInstance(key);
     }
 
     @Override
