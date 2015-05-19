@@ -26,6 +26,7 @@ import org.elasticsearch.action.admin.cluster.snapshots.restore.RestoreSnapshotR
 import org.elasticsearch.action.admin.indices.alias.exists.AliasesExistRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequestBuilder;
 import org.elasticsearch.action.admin.indices.cache.clear.ClearIndicesCacheRequestBuilder;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequestBuilder;
 import org.elasticsearch.action.admin.indices.exists.types.TypesExistsRequestBuilder;
 import org.elasticsearch.action.admin.indices.flush.FlushRequestBuilder;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsRequestBuilder;
@@ -50,9 +51,12 @@ import org.elasticsearch.action.search.SearchRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.suggest.SuggestRequestBuilder;
 import org.elasticsearch.action.support.IndicesOptions;
+import org.elasticsearch.cluster.metadata.MetaDataService;
+import org.elasticsearch.cluster.metadata.ProcessClusterEventTimeoutException;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.suggest.SuggestBuilders;
 import org.elasticsearch.search.warmer.IndexWarmersMetaData;
@@ -636,6 +640,63 @@ public class IndicesOptionsIntegrationTests extends ElasticsearchIntegrationTest
         assertThat(client().admin().indices().prepareExists("foobar").get().isExists(), equalTo(false));
         assertThat(client().admin().indices().prepareExists("bar").get().isExists(), equalTo(false));
         assertThat(client().admin().indices().prepareExists("barbaz").get().isExists(), equalTo(false));
+    }
+
+    @Test
+    public void testDeleteIndex_wildcard_lockedIndices() throws Exception {
+        verify(client().admin().indices().prepareDelete("_all"), false);
+
+        createIndex("foo", "foobar", "foofoo", "foofighters");
+        ensureYellow();
+
+        final Iterable<MetaDataService> metaDataServices = internalCluster().getInstances(MetaDataService.class);
+        for(MetaDataService service : metaDataServices) {
+            service.indexMetaDataLock("foo").tryAcquire();
+        }
+        // release lock after 1 seconds, so the locked index has to be executed separately
+        Thread unlock = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(1000);
+                    for(MetaDataService service : metaDataServices) {
+                        service.indexMetaDataLock("foo").release();
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        unlock.start();
+        verify(client().admin().indices().prepareDelete("foo", "foobar", "foofoo", "foofighters"), false);
+
+        assertThat(client().admin().indices().prepareExists("foo").get().isExists(), equalTo(false));
+        assertThat(client().admin().indices().prepareExists("foobar").get().isExists(), equalTo(false));
+        assertThat(client().admin().indices().prepareExists("foofoo").get().isExists(), equalTo(false));
+        assertThat(client().admin().indices().prepareExists("foofighters").get().isExists(), equalTo(false));
+        unlock.join();
+
+        // recreate the indices
+        createIndex("foo", "foobar", "foofighters");
+        ensureYellow();
+        for(MetaDataService service : metaDataServices) {
+            assertThat(service.indexMetaDataLock("foo").tryAcquire(), equalTo(true));
+        }
+        DeleteIndexRequestBuilder builder = client().admin().indices().prepareDelete("*").setMasterNodeTimeout(TimeValue.timeValueSeconds(1));
+        try {
+            builder.get();
+            assertFalse("Should had thrown an Exception", true);
+        } catch (ProcessClusterEventTimeoutException e) {
+            // that's correct
+        }
+        assertThat(client().admin().indices().prepareExists("foo").get().isExists(), equalTo(true)); // was not deleted because the index was locked
+        assertThat(client().admin().indices().prepareExists("foobar").get().isExists(), equalTo(false));
+        assertThat(client().admin().indices().prepareExists("foofighters").get().isExists(), equalTo(false));
+
+        for(MetaDataService service : metaDataServices) {
+            service.indexMetaDataLock("foo").release();
+        }
+
     }
 
     @Test

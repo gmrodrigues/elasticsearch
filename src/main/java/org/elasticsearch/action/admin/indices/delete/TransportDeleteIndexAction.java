@@ -31,12 +31,9 @@ import org.elasticsearch.cluster.block.ClusterBlockLevel;
 import org.elasticsearch.cluster.metadata.MetaDataDeleteIndexService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.CountDown;
 import org.elasticsearch.node.settings.NodeSettingsService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
-
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Delete index action.
@@ -83,43 +80,25 @@ public class TransportDeleteIndexAction extends TransportMasterNodeOperationActi
 
     @Override
     protected void masterOperation(final DeleteIndexRequest request, final ClusterState state, final ActionListener<DeleteIndexResponse> listener) throws ElasticsearchException {
-        String[] concreteIndices = state.metaData().concreteIndices(request.indicesOptions(), request.indices());
+        final String[] concreteIndices = state.metaData().concreteIndices(request.indicesOptions(), request.indices());
         if (concreteIndices.length == 0) {
             listener.onResponse(new DeleteIndexResponse(true));
             return;
         }
         // TODO: this API should be improved, currently, if one delete index failed, we send a failure, we should send a response array that includes all the indices that were deleted
-        final CountDown count = new CountDown(concreteIndices.length);
-        final AtomicReference<Throwable> lastFailure = new AtomicReference<>();
-        for (final String index : concreteIndices) {
-            deleteIndexService.deleteIndex(new MetaDataDeleteIndexService.Request(index).timeout(request.timeout()).masterTimeout(request.masterNodeTimeout()), new MetaDataDeleteIndexService.Listener() {
+        deleteIndexService.deleteIndices(new MetaDataDeleteIndexService.Request(concreteIndices).timeout(request.timeout()).masterTimeout(request.masterNodeTimeout()), new MetaDataDeleteIndexService.Listener<MetaDataDeleteIndexService.Response>() {
 
-                private volatile boolean ack = true;
+            @Override
+            public void onResponse(MetaDataDeleteIndexService.Response response) {
+                listener.onResponse(new DeleteIndexResponse(response.acknowledged()));
+            }
 
-                @Override
-                public void onResponse(MetaDataDeleteIndexService.Response response) {
-                    if (!response.acknowledged()) {
-                        ack = false;
-                    }
-                    if (count.countDown()) {
-                        Throwable failure = lastFailure.get();
-                        if (failure != null) {
-                            listener.onFailure(failure);
-                        } else {
-                            listener.onResponse(new DeleteIndexResponse(ack));
-                        }
-                    }
-                }
+            @Override
+            public void onFailure(Throwable t) {
+                logger.debug("[{}] failed to delete indices", t, concreteIndices);
+                listener.onFailure(t);
 
-                @Override
-                public void onFailure(Throwable t) {
-                    logger.debug("[{}] failed to delete index", t, index);
-                    lastFailure.set(t);
-                    if (count.countDown()) {
-                        listener.onFailure(t);
-                    }
-                }
-            });
-        }
+            }
+        });
     }
 }
