@@ -700,6 +700,30 @@ public class IndicesOptionsIntegrationTests extends ElasticsearchIntegrationTest
     }
 
     @Test
+    public void testDeleteIndex_locked() throws Exception {
+        verify(client().admin().indices().prepareDelete("_all"), false);
+        createIndex("foo");
+        ensureYellow();
+
+        final Iterable<MetaDataService> metaDataServices = internalCluster().getInstances(MetaDataService.class);
+        for(MetaDataService service : metaDataServices) {
+            service.indexMetaDataLock("foo").tryAcquire();
+        }
+        DeleteIndexRequestBuilder builder = client().admin().indices().prepareDelete("*").setMasterNodeTimeout(TimeValue.timeValueSeconds(1)).setTimeout(TimeValue.timeValueSeconds(1));
+        try {
+            builder.get();
+            assertFalse("Should had thrown an Exception", true);
+        } catch (ProcessClusterEventTimeoutException e) {
+            // that's correct
+        }
+        assertThat(client().admin().indices().prepareExists("foo").get().isExists(), equalTo(true)); // was not deleted because the index was locked
+        for(MetaDataService service : metaDataServices) {
+            service.indexMetaDataLock("foo").release();
+        }
+
+    }
+
+    @Test
     public void testDeleteMapping() throws Exception {
         assertAcked(prepareCreate("foobar").addMapping("type1", "field", "type=string"));
         ensureGreen();
