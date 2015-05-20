@@ -36,7 +36,7 @@ public interface IndexTemplateFilter {
 
         private IndexTemplateFilter[] filters;
 
-        Compound(IndexTemplateFilter... filters) {
+        public Compound(IndexTemplateFilter... filters) {
             this.filters = filters;
         }
 
