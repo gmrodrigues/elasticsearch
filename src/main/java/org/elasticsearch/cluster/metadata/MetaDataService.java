@@ -25,6 +25,7 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.math.MathUtils;
 import org.elasticsearch.common.settings.Settings;
 
+import java.util.*;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -44,5 +45,22 @@ public class MetaDataService extends AbstractComponent {
 
     public Semaphore indexMetaDataLock(String index) {
         return indexMdLocks[MathUtils.mod(DjbHashFunction.DJB_HASH(index), indexMdLocks.length)];
+    }
+
+
+    public Map<Semaphore, Collection<String>> indexMetaDataLocks(Collection<String> indices) {
+        // Because the total amount of locks is strongly limited a hash collisions will occur very likely
+        // but it's necessary to avoid adding a lock twice
+
+        Map<Semaphore, Collection<String>> mdLocks = new HashMap<>();
+        for(final String index : indices) {
+            Semaphore lock = indexMdLocks[MathUtils.mod(DjbHashFunction.DJB_HASH(index), indexMdLocks.length)];
+            if (mdLocks.containsKey(lock)) {
+                mdLocks.get(lock).add(index);
+            } else {
+                mdLocks.put(lock, new HashSet<String>() {{add(index);}});
+            }
+        }
+        return mdLocks;
     }
 }
