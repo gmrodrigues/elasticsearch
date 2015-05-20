@@ -94,9 +94,11 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
             }
         }
 
-        final MetaDataDeleteResponseListener deleteResponseListener = new MetaDataDeleteResponseListener(userListener, notAcquired.isEmpty() ? null : 2);
+        final MetaDataDeleteResponseListener deleteResponseListener = new MetaDataDeleteResponseListener(userListener, notAcquired.isEmpty() || lockedIndices.isEmpty() ? null : 2);
         // call delete with the already acquired locks
-        deleteIndices(request, lockedIndices, deleteResponseListener, acquiredLocks);
+        if(!lockedIndices.isEmpty()) {
+            deleteIndices(request, lockedIndices, deleteResponseListener, acquiredLocks);
+        }
         if(!notAcquired.isEmpty()) {
             threadPool.executor(ThreadPool.Names.MANAGEMENT).execute(new Runnable() {
                 @Override
