@@ -654,8 +654,11 @@ public class ObjectMapper implements Mapper, AllFieldMapper.IncludeInAll {
                             serializeNonDynamicArray(context, lastFieldName, arrayFieldName);
                         }
                     } else {
-                        
-                        serializeNonDynamicArray(context, lastFieldName, arrayFieldName);
+                        if (mapper instanceof ArrayValueMapperParser) {
+                            mapper.parse(context);
+                        } else {
+                            serializeNonDynamicArray(context, lastFieldName, arrayFieldName);
+                        }
                     }
                 }
             } else {
