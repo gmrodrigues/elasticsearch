@@ -130,13 +130,12 @@ public class RecoveryTarget extends AbstractComponent {
         return onGoingRecoveries.cancelRecoveriesForShard(shardId, reason, shouldCancel);
     }
 
-    public RecoveryState recoveryState(long id, IndexShard indexShard) {
+    public RecoveryStatus recoveryStatus(long id, IndexShard indexShard) {
         try (RecoveriesCollection.StatusRef statusRef = onGoingRecoveries.getStatusSafe(id, indexShard.shardId())) {
             if (statusRef == null) {
                 return null;
             }
-            final RecoveryStatus recoveryStatus = statusRef.status();
-            return recoveryStatus.state();
+            return statusRef.status();
         } catch (Exception e) {
             // shouldn't really happen, but have to be here due to auto close
             throw new ElasticsearchException("error while getting recovery state", e);
