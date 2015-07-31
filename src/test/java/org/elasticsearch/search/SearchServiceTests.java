@@ -40,7 +40,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
+        SearchService service = getInstanceFromNode(SearchService.class);
 
         assertEquals(1, service.getActiveContexts());
         service.doClose();
@@ -52,7 +52,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
+        SearchService service = getInstanceFromNode(SearchService.class);
 
         assertEquals(1, service.getActiveContexts());
         service.doClose();
@@ -64,7 +64,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         client().prepareIndex("index", "type", "1").setSource("field", "value").setRefresh(true).get();
         SearchResponse searchResponse = client().prepareSearch("index").setSize(1).setScroll("1m").get();
         assertThat(searchResponse.getScrollId(), is(notNullValue()));
-        InternalSearchService service = getInstanceFromNode(InternalSearchService.class);
+        SearchService service = getInstanceFromNode(SearchService.class);
 
         assertEquals(1, service.getActiveContexts());
         assertAcked(client().admin().indices().prepareDelete("index"));

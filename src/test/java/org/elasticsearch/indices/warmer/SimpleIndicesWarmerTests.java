@@ -39,7 +39,7 @@ import org.elasticsearch.index.engine.Segment;
 import org.elasticsearch.index.mapper.FieldMapper.Loading;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.indices.cache.query.IndicesQueryCache;
-import org.elasticsearch.search.InternalSearchService;
+import org.elasticsearch.search.SearchService;
 import org.elasticsearch.search.warmer.IndexWarmerMissingException;
 import org.elasticsearch.search.warmer.IndexWarmersMetaData;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
@@ -272,13 +272,13 @@ public class SimpleIndicesWarmerTests extends ElasticsearchIntegrationTest {
         LAZY {
             @Override
             CreateIndexRequestBuilder createIndex(String indexName, String type, String fieldName) {
-                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(InternalSearchService.NORMS_LOADING_KEY, Loading.LAZY_VALUE));
+                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(SearchService.NORMS_LOADING_KEY, Loading.LAZY_VALUE));
             }
         },
         EAGER {
             @Override
             CreateIndexRequestBuilder createIndex(String indexName, String type, String fieldName) {
-                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(InternalSearchService.NORMS_LOADING_KEY, Loading.EAGER_VALUE));
+                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(SearchService.NORMS_LOADING_KEY, Loading.EAGER_VALUE));
             }
 
             @Override
@@ -289,7 +289,7 @@ public class SimpleIndicesWarmerTests extends ElasticsearchIntegrationTest {
         EAGER_PER_FIELD {
             @Override
             CreateIndexRequestBuilder createIndex(String indexName, String type, String fieldName) throws Exception {
-                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(InternalSearchService.NORMS_LOADING_KEY, Loading.LAZY_VALUE)).addMapping(type, JsonXContent.contentBuilder()
+                return client().admin().indices().prepareCreate(indexName).setSettings(ImmutableSettings.builder().put(SINGLE_SHARD_NO_REPLICA).put(SearchService.NORMS_LOADING_KEY, Loading.LAZY_VALUE)).addMapping(type, JsonXContent.contentBuilder()
                                 .startObject()
                                     .startObject(type)
                                         .startObject("properties")

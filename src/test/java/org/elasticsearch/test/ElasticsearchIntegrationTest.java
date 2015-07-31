@@ -120,7 +120,7 @@ import org.elasticsearch.indices.store.IndicesStore;
 import org.elasticsearch.node.internal.InternalNode;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.script.ScriptService;
-import org.elasticsearch.search.InternalSearchService;
+import org.elasticsearch.search.SearchService;
 import org.elasticsearch.test.client.RandomizingClient;
 import org.elasticsearch.test.disruption.ServiceDisruptionScheme;
 import org.elasticsearch.test.rest.client.http.HttpRequestBuilder;
@@ -554,7 +554,7 @@ public abstract class ElasticsearchIntegrationTest extends ElasticsearchTestCase
 
     private static ImmutableSettings.Builder setRandomNormsLoading(Random random, ImmutableSettings.Builder builder) {
         if (random.nextBoolean()) {
-            builder.put(InternalSearchService.NORMS_LOADING_KEY, RandomPicks.randomFrom(random, Arrays.asList(FieldMapper.Loading.EAGER, FieldMapper.Loading.LAZY)));
+            builder.put(SearchService.NORMS_LOADING_KEY, RandomPicks.randomFrom(random, Arrays.asList(FieldMapper.Loading.EAGER, FieldMapper.Loading.LAZY)));
         }
         return builder;
     }
