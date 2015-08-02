@@ -154,6 +154,10 @@ public abstract class TransportShardReplicationOperationAction<Request extends S
         return TransportRequestOptions.EMPTY;
     }
 
+    protected boolean ignoreReplicas() {
+        return false;
+    }
+
     protected boolean retryPrimaryException(Throwable e) {
         return TransportActions.isShardNotAvailableException(e);
     }
@@ -528,6 +532,18 @@ public abstract class TransportShardReplicationOperationAction<Request extends S
             }
         }
 
+        /**
+         * upon success, finish the first phase and finish without {@link ReplicationPhase}
+         * @param response
+         */
+        void finishWithoutReplicationPhase(Response response) {
+            if (finished.compareAndSet(false, true)) {
+                Releasables.close(indexShardReference);
+                listener.onResponse(response);
+            } else {
+                assert false : "finishWithoutReplicationPhase called but operation is already finished";
+            }
+        }
 
         void finishAsFailed(Throwable failure) {
             if (finished.compareAndSet(false, true)) {
@@ -573,7 +589,12 @@ public abstract class TransportShardReplicationOperationAction<Request extends S
                 PrimaryOperationRequest por = new PrimaryOperationRequest(primary.id(), internalRequest.concreteIndex(), internalRequest.request());
                 Tuple<Response, ReplicaRequest> primaryResponse = shardOperationOnPrimary(observer.observedState(), por);
                 logger.trace("operation completed on primary [{}]", primary);
-                replicationPhase = new ReplicationPhase(shardsIt, primaryResponse.v2(), primaryResponse.v1(), observer, primary, internalRequest, listener, indexShardReference);
+                if (ignoreReplicas()) {
+                    finishWithoutReplicationPhase(primaryResponse.v1());
+                    return;
+                } else {
+                    replicationPhase = new ReplicationPhase(shardsIt, primaryResponse.v2(), primaryResponse.v1(), observer, primary, internalRequest, listener, indexShardReference);
+                }
             } catch (Throwable e) {
                 internalRequest.request.setCanHaveDuplicates();
                 // shard has not been allocated yet, retry it here
@@ -965,6 +986,7 @@ public abstract class TransportShardReplicationOperationAction<Request extends S
         }
 
     }
+
 
     /**
      * Internal request class that gets built on each node. Holds the original request plus additional info.
