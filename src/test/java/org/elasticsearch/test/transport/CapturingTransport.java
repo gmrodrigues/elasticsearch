@@ -164,6 +164,11 @@ public class CapturingTransport implements Transport {
     }
 
     @Override
+    public Transport disable() throws ElasticsearchException {
+        return null;
+    }
+
+    @Override
     public Transport start() throws ElasticsearchException {
         return null;
     }

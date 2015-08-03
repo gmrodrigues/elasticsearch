@@ -81,6 +81,18 @@ public class RecoverySettings extends AbstractComponent implements Closeable {
     @Deprecated
     public static final String INDICES_RECOVERY_MAX_SIZE_PER_SEC = "indices.recovery.max_size_per_sec";
 
+    private static final ByteSizeValue DEFAULT_FILE_CHUNK_SIZE = new ByteSizeValue(512, ByteSizeUnit.KB);
+    private static final int DEFAULT_TRANSLOG_OPS = 1000;
+    private static final ByteSizeValue DEFAULT_TRANSLOG_SIZE = new ByteSizeValue(512, ByteSizeUnit.KB);
+    private static final boolean DEFAULT_COMPRESS = true;
+    private static final int DEFAULT_CONCURRENT_STREAMS = 3;
+    private static final int DEFAULT_CONCURRENT_SMALL_FILE_STREAMS = 2;
+    private static final ByteSizeValue DEFAULT_MAX_BYTES_PER_SEC = new ByteSizeValue(40, ByteSizeUnit.MB);
+    private static final TimeValue DEFAULT_RETRY_DELAY_STATE_SYNC = TimeValue.timeValueMillis(500);
+    private static final TimeValue DEFAULT_RETRY_DELAY_NETWORK = TimeValue.timeValueSeconds(5);
+    private static final TimeValue DEFAULT_INTERNAL_ACTION_TIMEOUT = TimeValue.timeValueMinutes(15);
+    private static final TimeValue DEFAULT_INTERNAL_ACTION_LONG_TIMEOUT = new TimeValue(DEFAULT_INTERNAL_ACTION_TIMEOUT.millis() * 2);
+
     private volatile ByteSizeValue fileChunkSize;
 
     private volatile boolean compress;
@@ -105,31 +117,31 @@ public class RecoverySettings extends AbstractComponent implements Closeable {
     public RecoverySettings(Settings settings, NodeSettingsService nodeSettingsService) {
         super(settings);
 
-        this.fileChunkSize = settings.getAsBytesSize(INDICES_RECOVERY_FILE_CHUNK_SIZE, settings.getAsBytesSize("index.shard.recovery.file_chunk_size", new ByteSizeValue(512, ByteSizeUnit.KB)));
-        this.translogOps = settings.getAsInt(INDICES_RECOVERY_TRANSLOG_OPS, settings.getAsInt("index.shard.recovery.translog_ops", 1000));
-        this.translogSize = settings.getAsBytesSize(INDICES_RECOVERY_TRANSLOG_SIZE, settings.getAsBytesSize("index.shard.recovery.translog_size", new ByteSizeValue(512, ByteSizeUnit.KB)));
-        this.compress = settings.getAsBoolean(INDICES_RECOVERY_COMPRESS, true);
+        this.fileChunkSize = settings.getAsBytesSize(INDICES_RECOVERY_FILE_CHUNK_SIZE, settings.getAsBytesSize("index.shard.recovery.file_chunk_size", DEFAULT_FILE_CHUNK_SIZE));
+        this.translogOps = settings.getAsInt(INDICES_RECOVERY_TRANSLOG_OPS, settings.getAsInt("index.shard.recovery.translog_ops", DEFAULT_TRANSLOG_OPS));
+        this.translogSize = settings.getAsBytesSize(INDICES_RECOVERY_TRANSLOG_SIZE, settings.getAsBytesSize("index.shard.recovery.translog_size", DEFAULT_TRANSLOG_SIZE));
+        this.compress = settings.getAsBoolean(INDICES_RECOVERY_COMPRESS, DEFAULT_COMPRESS);
 
-        this.retryDelayStateSync = settings.getAsTime(INDICES_RECOVERY_RETRY_DELAY_STATE_SYNC, TimeValue.timeValueMillis(500));
+        this.retryDelayStateSync = settings.getAsTime(INDICES_RECOVERY_RETRY_DELAY_STATE_SYNC, DEFAULT_RETRY_DELAY_STATE_SYNC);
         // doesn't have to be fast as nodes are reconnected every 10s by default (see InternalClusterService.ReconnectToNodes)
         // and we want to give the master time to remove a faulty node
-        this.retryDelayNetwork = settings.getAsTime(INDICES_RECOVERY_RETRY_DELAY_NETWORK, TimeValue.timeValueSeconds(5));
+        this.retryDelayNetwork = settings.getAsTime(INDICES_RECOVERY_RETRY_DELAY_NETWORK, DEFAULT_RETRY_DELAY_NETWORK);
 
-        this.internalActionTimeout = settings.getAsTime(INDICES_RECOVERY_INTERNAL_ACTION_TIMEOUT, TimeValue.timeValueMinutes(15));
-        this.internalActionLongTimeout = settings.getAsTime(INDICES_RECOVERY_INTERNAL_LONG_ACTION_TIMEOUT, new TimeValue(internalActionTimeout.millis() * 2));
+        this.internalActionTimeout = settings.getAsTime(INDICES_RECOVERY_INTERNAL_ACTION_TIMEOUT, DEFAULT_INTERNAL_ACTION_TIMEOUT);
+        this.internalActionLongTimeout = settings.getAsTime(INDICES_RECOVERY_INTERNAL_LONG_ACTION_TIMEOUT, DEFAULT_INTERNAL_ACTION_LONG_TIMEOUT);
 
         this.activityTimeout = settings.getAsTime(INDICES_RECOVERY_ACTIVITY_TIMEOUT,
                 // default to the internalActionLongTimeout used as timeouts on RecoverySource
-                internalActionLongTimeout
+                DEFAULT_INTERNAL_ACTION_LONG_TIMEOUT
         );
 
 
-        this.concurrentStreams = componentSettings.getAsInt("concurrent_streams", settings.getAsInt("index.shard.recovery.concurrent_streams", 3));
+        this.concurrentStreams = componentSettings.getAsInt("concurrent_streams", settings.getAsInt("index.shard.recovery.concurrent_streams", DEFAULT_CONCURRENT_STREAMS));
         this.concurrentStreamPool = EsExecutors.newScaling(0, concurrentStreams, 60, TimeUnit.SECONDS, EsExecutors.daemonThreadFactory(settings, "[recovery_stream]"));
-        this.concurrentSmallFileStreams = componentSettings.getAsInt("concurrent_small_file_streams", settings.getAsInt("index.shard.recovery.concurrent_small_file_streams", 2));
+        this.concurrentSmallFileStreams = componentSettings.getAsInt("concurrent_small_file_streams", settings.getAsInt("index.shard.recovery.concurrent_small_file_streams", DEFAULT_CONCURRENT_SMALL_FILE_STREAMS));
         this.concurrentSmallFileStreamPool = EsExecutors.newScaling(0, concurrentSmallFileStreams, 60, TimeUnit.SECONDS, EsExecutors.daemonThreadFactory(settings, "[small_file_recovery_stream]"));
 
-        this.maxBytesPerSec = componentSettings.getAsBytesSize("max_bytes_per_sec", componentSettings.getAsBytesSize("max_size_per_sec", new ByteSizeValue(40, ByteSizeUnit.MB)));
+        this.maxBytesPerSec = componentSettings.getAsBytesSize("max_bytes_per_sec", componentSettings.getAsBytesSize("max_size_per_sec", DEFAULT_MAX_BYTES_PER_SEC));
         if (maxBytesPerSec.bytes() <= 0) {
             rateLimiter = null;
         } else {
@@ -203,7 +215,14 @@ public class RecoverySettings extends AbstractComponent implements Closeable {
     class ApplySettings implements NodeSettingsService.Listener {
         @Override
         public void onRefreshSettings(Settings settings) {
-            ByteSizeValue maxSizePerSec = settings.getAsBytesSize(INDICES_RECOVERY_MAX_BYTES_PER_SEC, settings.getAsBytesSize(INDICES_RECOVERY_MAX_SIZE_PER_SEC, RecoverySettings.this.maxBytesPerSec));
+            ByteSizeValue maxSizePerSec = settings.getAsBytesSize(
+                    INDICES_RECOVERY_MAX_BYTES_PER_SEC,
+                    settings.getAsBytesSize(INDICES_RECOVERY_MAX_SIZE_PER_SEC,
+                            RecoverySettings.this.settings.getAsBytesSize(
+                                    INDICES_RECOVERY_MAX_BYTES_PER_SEC,
+                                    RecoverySettings.this.settings.getAsBytesSize(
+                                            INDICES_RECOVERY_MAX_SIZE_PER_SEC,
+                                            DEFAULT_MAX_BYTES_PER_SEC))));
             if (!Objects.equal(maxSizePerSec, RecoverySettings.this.maxBytesPerSec)) {
                 logger.info("updating [{}] from [{}] to [{}]", INDICES_RECOVERY_MAX_BYTES_PER_SEC, RecoverySettings.this.maxBytesPerSec, maxSizePerSec);
                 RecoverySettings.this.maxBytesPerSec = maxSizePerSec;
@@ -216,57 +235,85 @@ public class RecoverySettings extends AbstractComponent implements Closeable {
                 }
             }
 
-            ByteSizeValue fileChunkSize = settings.getAsBytesSize(INDICES_RECOVERY_FILE_CHUNK_SIZE, RecoverySettings.this.fileChunkSize);
+            ByteSizeValue fileChunkSize = settings.getAsBytesSize(INDICES_RECOVERY_FILE_CHUNK_SIZE,
+                    RecoverySettings.this.settings.getAsBytesSize(INDICES_RECOVERY_FILE_CHUNK_SIZE,
+                            DEFAULT_FILE_CHUNK_SIZE));
             if (!fileChunkSize.equals(RecoverySettings.this.fileChunkSize)) {
                 logger.info("updating [indices.recovery.file_chunk_size] from [{}] to [{}]", RecoverySettings.this.fileChunkSize, fileChunkSize);
                 RecoverySettings.this.fileChunkSize = fileChunkSize;
             }
 
-            int translogOps = settings.getAsInt(INDICES_RECOVERY_TRANSLOG_OPS, RecoverySettings.this.translogOps);
+            int translogOps = settings.getAsInt(INDICES_RECOVERY_TRANSLOG_OPS,
+                    RecoverySettings.this.settings.getAsInt(INDICES_RECOVERY_TRANSLOG_OPS,
+                            DEFAULT_TRANSLOG_OPS));
             if (translogOps != RecoverySettings.this.translogOps) {
                 logger.info("updating [indices.recovery.translog_ops] from [{}] to [{}]", RecoverySettings.this.translogOps, translogOps);
                 RecoverySettings.this.translogOps = translogOps;
             }
 
-            ByteSizeValue translogSize = settings.getAsBytesSize(INDICES_RECOVERY_TRANSLOG_SIZE, RecoverySettings.this.translogSize);
+            ByteSizeValue translogSize = settings.getAsBytesSize(INDICES_RECOVERY_TRANSLOG_SIZE,
+                    RecoverySettings.this.settings.getAsBytesSize(INDICES_RECOVERY_TRANSLOG_SIZE,
+                            DEFAULT_TRANSLOG_SIZE));
             if (!translogSize.equals(RecoverySettings.this.translogSize)) {
                 logger.info("updating [indices.recovery.translog_size] from [{}] to [{}]", RecoverySettings.this.translogSize, translogSize);
                 RecoverySettings.this.translogSize = translogSize;
             }
 
-            boolean compress = settings.getAsBoolean(INDICES_RECOVERY_COMPRESS, RecoverySettings.this.compress);
+            boolean compress = settings.getAsBoolean(INDICES_RECOVERY_COMPRESS,
+                    RecoverySettings.this.settings.getAsBoolean(INDICES_RECOVERY_COMPRESS,
+                            DEFAULT_COMPRESS));
             if (compress != RecoverySettings.this.compress) {
                 logger.info("updating [indices.recovery.compress] from [{}] to [{}]", RecoverySettings.this.compress, compress);
                 RecoverySettings.this.compress = compress;
             }
 
-            int concurrentStreams = settings.getAsInt(INDICES_RECOVERY_CONCURRENT_STREAMS, RecoverySettings.this.concurrentStreams);
+            int concurrentStreams = settings.getAsInt(INDICES_RECOVERY_CONCURRENT_STREAMS,
+                    RecoverySettings.this.settings.getAsInt(INDICES_RECOVERY_CONCURRENT_STREAMS,
+                            DEFAULT_CONCURRENT_STREAMS));
             if (concurrentStreams != RecoverySettings.this.concurrentStreams) {
                 logger.info("updating [indices.recovery.concurrent_streams] from [{}] to [{}]", RecoverySettings.this.concurrentStreams, concurrentStreams);
                 RecoverySettings.this.concurrentStreams = concurrentStreams;
                 RecoverySettings.this.concurrentStreamPool.setMaximumPoolSize(concurrentStreams);
             }
 
-            int concurrentSmallFileStreams = settings.getAsInt(INDICES_RECOVERY_CONCURRENT_SMALL_FILE_STREAMS, RecoverySettings.this.concurrentSmallFileStreams);
+            int concurrentSmallFileStreams = settings.getAsInt(
+                    INDICES_RECOVERY_CONCURRENT_SMALL_FILE_STREAMS,
+                    RecoverySettings.this.settings.getAsInt(INDICES_RECOVERY_CONCURRENT_SMALL_FILE_STREAMS,
+                            DEFAULT_CONCURRENT_SMALL_FILE_STREAMS));
             if (concurrentSmallFileStreams != RecoverySettings.this.concurrentSmallFileStreams) {
                 logger.info("updating [indices.recovery.concurrent_small_file_streams] from [{}] to [{}]", RecoverySettings.this.concurrentSmallFileStreams, concurrentSmallFileStreams);
                 RecoverySettings.this.concurrentSmallFileStreams = concurrentSmallFileStreams;
                 RecoverySettings.this.concurrentSmallFileStreamPool.setMaximumPoolSize(concurrentSmallFileStreams);
             }
 
-            RecoverySettings.this.retryDelayNetwork = maybeUpdate(RecoverySettings.this.retryDelayNetwork, settings, INDICES_RECOVERY_RETRY_DELAY_NETWORK);
-            RecoverySettings.this.retryDelayStateSync = maybeUpdate(RecoverySettings.this.retryDelayStateSync, settings, INDICES_RECOVERY_RETRY_DELAY_STATE_SYNC);
-            RecoverySettings.this.activityTimeout = maybeUpdate(RecoverySettings.this.activityTimeout, settings, INDICES_RECOVERY_ACTIVITY_TIMEOUT);
-            RecoverySettings.this.internalActionTimeout = maybeUpdate(RecoverySettings.this.internalActionTimeout, settings, INDICES_RECOVERY_INTERNAL_ACTION_TIMEOUT);
-            RecoverySettings.this.internalActionLongTimeout = maybeUpdate(RecoverySettings.this.internalActionLongTimeout, settings, INDICES_RECOVERY_INTERNAL_LONG_ACTION_TIMEOUT);
+            RecoverySettings.this.retryDelayNetwork = maybeUpdate(RecoverySettings.this.retryDelayNetwork,
+                    settings,
+                    INDICES_RECOVERY_RETRY_DELAY_NETWORK,
+                    DEFAULT_RETRY_DELAY_NETWORK);
+            RecoverySettings.this.retryDelayStateSync = maybeUpdate(RecoverySettings.this.retryDelayStateSync,
+                    settings,
+                    INDICES_RECOVERY_RETRY_DELAY_STATE_SYNC,
+                    DEFAULT_RETRY_DELAY_STATE_SYNC);
+            RecoverySettings.this.activityTimeout = maybeUpdate(RecoverySettings.this.activityTimeout,
+                    settings,
+                    INDICES_RECOVERY_ACTIVITY_TIMEOUT,
+                    DEFAULT_INTERNAL_ACTION_TIMEOUT);
+            RecoverySettings.this.internalActionTimeout = maybeUpdate(RecoverySettings.this.internalActionTimeout,
+                    settings,
+                    INDICES_RECOVERY_INTERNAL_ACTION_TIMEOUT,
+                    DEFAULT_INTERNAL_ACTION_TIMEOUT);
+            RecoverySettings.this.internalActionLongTimeout = maybeUpdate(RecoverySettings.this.internalActionLongTimeout,
+                    settings,
+                    INDICES_RECOVERY_INTERNAL_LONG_ACTION_TIMEOUT,
+                    DEFAULT_INTERNAL_ACTION_LONG_TIMEOUT);
         }
 
-        private TimeValue maybeUpdate(final TimeValue currentValue, final Settings settings, final String key) {
-            final TimeValue value = settings.getAsTime(key, currentValue);
+        private TimeValue maybeUpdate(final TimeValue currentValue, final Settings settings, final String key, TimeValue defaultValue) {
+            final TimeValue value = settings.getAsTime(key, RecoverySettings.this.settings.getAsTime(key, defaultValue));
             if (value.equals(currentValue)) {
                 return currentValue;
             }
-            logger.info("updating [] from [{}] to [{}]", key, currentValue, value);
+            logger.info("updating [{}] from [{}] to [{}]", key, currentValue, value);
             return value;
         }
     }

@@ -24,6 +24,7 @@ import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.RateLimiter;
+import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchIllegalStateException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
@@ -127,6 +128,18 @@ public class RecoveryTarget extends AbstractComponent {
      */
     public boolean cancelRecoveriesForShard(ShardId shardId, String reason, @Nullable Predicate<RecoveryStatus> shouldCancel) {
         return onGoingRecoveries.cancelRecoveriesForShard(shardId, reason, shouldCancel);
+    }
+
+    public RecoveryStatus recoveryStatus(long id, IndexShard indexShard) {
+        try (RecoveriesCollection.StatusRef statusRef = onGoingRecoveries.getStatusSafe(id, indexShard.shardId())) {
+            if (statusRef == null) {
+                return null;
+            }
+            return statusRef.status();
+        } catch (Exception e) {
+            // shouldn't really happen, but have to be here due to auto close
+            throw new ElasticsearchException("error while getting recovery state", e);
+        }
     }
 
     public void startRecovery(final IndexShard indexShard, final RecoveryState.Type recoveryType, final DiscoveryNode sourceNode, final RecoveryListener listener) {

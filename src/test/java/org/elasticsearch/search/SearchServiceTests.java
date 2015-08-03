@@ -43,7 +43,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         SearchService service = getInstanceFromNode(SearchService.class);
 
         assertEquals(1, service.getActiveContexts());
-        service.doClose(); // this kills the keep-alive reaper we have to reset the node after this test
+        service.doClose();
         assertEquals(0, service.getActiveContexts());
     }
 
@@ -55,7 +55,7 @@ public class SearchServiceTests extends ElasticsearchSingleNodeTest {
         SearchService service = getInstanceFromNode(SearchService.class);
 
         assertEquals(1, service.getActiveContexts());
-        service.doStop();
+        service.doClose();
         assertEquals(0, service.getActiveContexts());
     }
 

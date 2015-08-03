@@ -17,13 +17,17 @@
  * under the License.
  */
 
-package org.elasticsearch.index.mapper.object;
+package org.elasticsearch.cluster.routing.allocation.deallocator;
 
-/**
- * A marker interface indicating that this mapper can handle array value, and the array
- * itself should be passed to it.
- *
- *
- */
-public interface ArrayValueMapperParser {
+import org.elasticsearch.cluster.service.GracefulStop;
+import org.elasticsearch.common.inject.AbstractModule;
+
+public class DeallocatorModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        bind(AllShardsDeallocator.class).asEagerSingleton();
+        bind(PrimariesDeallocator.class).asEagerSingleton();
+        bind(Deallocators.class).asEagerSingleton();
+        bind(GracefulStop.class).asEagerSingleton();
+    }
 }

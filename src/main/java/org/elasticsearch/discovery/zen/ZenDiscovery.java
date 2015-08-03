@@ -1317,7 +1317,8 @@ public class ZenDiscovery extends AbstractLifecycleComponent<Discovery> implemen
         @Override
         public void onRefreshSettings(Settings settings) {
             int minimumMasterNodes = settings.getAsInt(ElectMasterService.DISCOVERY_ZEN_MINIMUM_MASTER_NODES,
-                    ZenDiscovery.this.electMaster.minimumMasterNodes());
+                    ZenDiscovery.this.settings.getAsInt(ElectMasterService.DISCOVERY_ZEN_MINIMUM_MASTER_NODES,
+                            ElectMasterService.DEFAULT_DISCOVERY_ZEN_MINIMUM_MASTER_NODES));
             if (minimumMasterNodes != ZenDiscovery.this.electMaster.minimumMasterNodes()) {
                 logger.info("updating {} from [{}] to [{}]", ElectMasterService.DISCOVERY_ZEN_MINIMUM_MASTER_NODES,
                         ZenDiscovery.this.electMaster.minimumMasterNodes(), minimumMasterNodes);

@@ -501,11 +501,61 @@ public class MetaData implements Iterable<IndexMetaData> {
         return routing;
     }
 
-    public Map<String, Set<String>> resolveSearchRouting(@Nullable String routing, String aliasOrIndex) {
+    /**
+     * Resolve routing for use in search-like queries
+     *
+     * This method interprets the routing value as a comma separated list of distinct values.
+     * The empty string is not considered a routing value
+     * <p>
+     * E.g.:
+     * <pre>
+     *  "" -> [] # no routing
+     *  "," -> [] # no routing
+     *  "a,b" -> [a,b]
+     *  "a," -> [a]
+     * </pre>
+     *
+     * @param routing if not null a comma separated string of routing values
+     * @param aliasOrIndex the alias or index to get the routing for
+     * @return a map from index names to set of routing values
+     */
+    public @Nullable Map<String, Set<String>> resolveSearchRouting(@Nullable String routing, String aliasOrIndex) {
         return resolveSearchRouting(routing, convertFromWildcards(new String[]{aliasOrIndex}, IndicesOptions.lenientExpandOpen()));
     }
 
-    public Map<String, Set<String>> resolveSearchRouting(@Nullable String routing, String[] aliasesOrIndices) {
+    /**
+     * Resolve routing for use in search-like queries
+     *
+     * This method interprets the routing value as a comma separated list of distinct values.
+     * The empty string is not considered a routing value
+     * <p>
+     * E.g.:
+     * <pre>
+     *  "" -> [] # no routing
+     *  "," -> [] # no routing
+     *  "a,b" -> [a,b]
+     *  "a," -> [a]
+     * </pre>
+     *
+     * @param routing if not null a comma separated string of routing values
+     * @param aliasesOrIndices the aliases or indices to get the routing for
+     * @return a map from index names to set of routing values
+     */
+    public @Nullable Map<String, Set<String>> resolveSearchRouting(@Nullable String routing, String[] aliasesOrIndices) {
+        Set<String> routings = (routing == null ? ImmutableSet.<String>of() : Strings.splitStringByCommaToSet(routing));
+        return resolveSearchRouting(routings, aliasesOrIndices);
+    }
+
+    /**
+     * Resolve routing for use in search-like queries
+     *
+     * This method does not consider the given routing values as comma separated distinct routing values
+     *
+     * @param routing a set of routing values
+     * @param aliasesOrIndices an array of index or array names
+     * @return a map from index name to set of routing values
+     */
+    public @Nullable Map<String, Set<String>> resolveSearchRouting(Set<String> routing, String[] aliasesOrIndices) {
         if (isAllIndices(aliasesOrIndices)) {
             return resolveSearchRoutingAllIndices(routing);
         }
@@ -517,12 +567,9 @@ public class MetaData implements Iterable<IndexMetaData> {
         }
 
         Map<String, Set<String>> routings = null;
-        Set<String> paramRouting = null;
         // List of indices that don't require any routing
         Set<String> norouting = new HashSet<>();
-        if (routing != null) {
-            paramRouting = Strings.splitStringByCommaToSet(routing);
-        }
+
 
         for (String aliasOrIndex : aliasesOrIndices) {
             ImmutableOpenMap<String, AliasMetaData> indexToRoutingMap = aliases.get(aliasOrIndex);
@@ -540,8 +587,8 @@ public class MetaData implements Iterable<IndexMetaData> {
                                 routings.put(indexRouting.key, r);
                             }
                             r.addAll(indexRouting.value.searchRoutingValues());
-                            if (paramRouting != null) {
-                                r.retainAll(paramRouting);
+                            if (!routing.isEmpty()) {
+                                r.retainAll(routing);
                             }
                             if (r.isEmpty()) {
                                 routings.remove(indexRouting.key);
@@ -550,8 +597,8 @@ public class MetaData implements Iterable<IndexMetaData> {
                             // Non-routing alias
                             if (!norouting.contains(indexRouting.key)) {
                                 norouting.add(indexRouting.key);
-                                if (paramRouting != null) {
-                                    Set<String> r = new HashSet<>(paramRouting);
+                                if (!routing.isEmpty()) {
+                                    Set<String> r = new HashSet<>(routing);
                                     if (routings == null) {
                                         routings = newHashMap();
                                     }
@@ -569,8 +616,8 @@ public class MetaData implements Iterable<IndexMetaData> {
                 // Index
                 if (!norouting.contains(aliasOrIndex)) {
                     norouting.add(aliasOrIndex);
-                    if (paramRouting != null) {
-                        Set<String> r = new HashSet<>(paramRouting);
+                    if (!routing.isEmpty()) {
+                        Set<String> r = new HashSet<>(routing);
                         if (routings == null) {
                             routings = newHashMap();
                         }
@@ -590,12 +637,8 @@ public class MetaData implements Iterable<IndexMetaData> {
         return routings;
     }
 
-    private Map<String, Set<String>> resolveSearchRoutingSingleValue(@Nullable String routing, String aliasOrIndex) {
+    private Map<String, Set<String>> resolveSearchRoutingSingleValue(Set<String> routing, String aliasOrIndex) {
         Map<String, Set<String>> routings = null;
-        Set<String> paramRouting = null;
-        if (routing != null) {
-            paramRouting = Strings.splitStringByCommaToSet(routing);
-        }
 
         ImmutableOpenMap<String, AliasMetaData> indexToRoutingMap = aliases.get(aliasOrIndex);
         if (indexToRoutingMap != null && !indexToRoutingMap.isEmpty()) {
@@ -604,8 +647,8 @@ public class MetaData implements Iterable<IndexMetaData> {
                 if (!indexRouting.value.searchRoutingValues().isEmpty()) {
                     // Routing alias
                     Set<String> r = new HashSet<>(indexRouting.value.searchRoutingValues());
-                    if (paramRouting != null) {
-                        r.retainAll(paramRouting);
+                    if (!routing.isEmpty()) {
+                        r.retainAll(routing);
                     }
                     if (!r.isEmpty()) {
                         if (routings == null) {
@@ -615,8 +658,8 @@ public class MetaData implements Iterable<IndexMetaData> {
                     }
                 } else {
                     // Non-routing alias
-                    if (paramRouting != null) {
-                        Set<String> r = new HashSet<>(paramRouting);
+                    if (!routing.isEmpty()) {
+                        Set<String> r = new HashSet<>(routing);
                         if (routings == null) {
                             routings = newHashMap();
                         }
@@ -626,8 +669,8 @@ public class MetaData implements Iterable<IndexMetaData> {
             }
         } else {
             // It's an index
-            if (paramRouting != null) {
-                routings = ImmutableMap.of(aliasOrIndex, paramRouting);
+            if (!routing.isEmpty()) {
+                routings = ImmutableMap.of(aliasOrIndex, routing);
             }
         }
         return routings;
@@ -636,13 +679,12 @@ public class MetaData implements Iterable<IndexMetaData> {
     /**
      * Sets the same routing for all indices
      */
-    private Map<String, Set<String>> resolveSearchRoutingAllIndices(String routing) {
-        if (routing != null) {
-            Set<String> r = Strings.splitStringByCommaToSet(routing);
+    private @Nullable Map<String, Set<String>> resolveSearchRoutingAllIndices(Set<String> routing) {
+        if (!routing.isEmpty()) {
             Map<String, Set<String>> routings = newHashMap();
             String[] concreteIndices = concreteAllIndices();
             for (String index : concreteIndices) {
-                routings.put(index, r);
+                routings.put(index, routing);
             }
             return routings;
         }

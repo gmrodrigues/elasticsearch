@@ -32,7 +32,7 @@ import java.util.Enumeration;
 /**
  *
  */
-public final class NetworkService extends AbstractComponent {
+public class NetworkService extends AbstractComponent {
 
     private final NetworkProbe probe;
 

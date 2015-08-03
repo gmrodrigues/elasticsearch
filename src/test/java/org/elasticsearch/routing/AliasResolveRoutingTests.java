@@ -99,14 +99,14 @@ public class AliasResolveRoutingTests extends ElasticsearchIntegrationTest {
         assertThat(clusterService().state().metaData().resolveSearchRouting("1", "alias10"), nullValue());
         assertThat(clusterService().state().metaData().resolveSearchRouting(null, "alias0"), equalTo(newMap("test1", newSet("0"), "test2", newSet("0"))));
 
-        assertThat(clusterService().state().metaData().resolveSearchRouting(null, new String[]{"alias10", "alias20"}),
+        assertThat(clusterService().state().metaData().resolveSearchRouting((String)null, new String[]{"alias10", "alias20"}),
                 equalTo(newMap("test1", newSet("0"), "test2", newSet("0"))));
-        assertThat(clusterService().state().metaData().resolveSearchRouting(null, new String[]{"alias10", "alias21"}),
+        assertThat(clusterService().state().metaData().resolveSearchRouting((String)null, new String[]{"alias10", "alias21"}),
                 equalTo(newMap("test1", newSet("0"), "test2", newSet("1"))));
-        assertThat(clusterService().state().metaData().resolveSearchRouting(null, new String[]{"alias20", "alias21"}),
+        assertThat(clusterService().state().metaData().resolveSearchRouting((String)null, new String[]{"alias20", "alias21"}),
                 equalTo(newMap("test2", newSet("0", "1"))));
-        assertThat(clusterService().state().metaData().resolveSearchRouting(null, new String[]{"test1", "alias10"}), nullValue());
-        assertThat(clusterService().state().metaData().resolveSearchRouting(null, new String[]{"alias10", "test1"}), nullValue());
+        assertThat(clusterService().state().metaData().resolveSearchRouting((String)null, new String[]{"test1", "alias10"}), nullValue());
+        assertThat(clusterService().state().metaData().resolveSearchRouting((String)null, new String[]{"alias10", "test1"}), nullValue());
 
 
         assertThat(clusterService().state().metaData().resolveSearchRouting("0", new String[]{"alias10", "alias20"}),
