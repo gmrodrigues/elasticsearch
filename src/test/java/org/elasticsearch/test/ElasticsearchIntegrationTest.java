@@ -1672,12 +1672,8 @@ public abstract class ElasticsearchIntegrationTest extends ElasticsearchTestCase
     }
 
     private int getNumClientNodes() {
-        // crate module doesn't work correctly with client nodes currently due to injection errors
-        return 0;
-        /*
         ClusterScope annotation = getAnnotation(this.getClass());
         return annotation == null ? InternalTestCluster.DEFAULT_NUM_CLIENT_NODES : annotation.numClientNodes();
-        */
     }
 
     private boolean randomDynamicTemplates() {
